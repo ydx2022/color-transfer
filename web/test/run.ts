@@ -9,7 +9,10 @@ import { runScheme } from "../src/core/bakeoff.ts";
 import { fountainRoundTrip, LTEncoder, LTDecoder } from "../src/core/fountain.ts";
 import type { ChannelModel, ModulationScheme } from "../src/shared/types.ts";
 import { DEFAULT_SYMBOL_BITS, DEFAULT_COLOR_BITS, MOIRE_ATT_SIGMA_DEFAULT } from "../src/shared/params.ts";
-import { packFrameHeader, parseFrameHeader, FEEDBACK_CAPABLE } from "../src/shared/protocol.ts";
+import { packTransferHeader, parseTransferHeader, HEADER_BYTES, HEADER_BITS, majorityVoteBits } from "../src/shared/protocol.ts";
+import { planTransfer, decodePlanFor, encodeTransfer } from "../src/core/transfer.ts";
+import { decodeTransferFrame, ingestFrame, TransferReassembler } from "../src/core/transferDecode.ts";
+import type { DecodedFrame } from "../src/receiver/types.ts";
 
 let pass = 0;
 let fail = 0;
@@ -168,15 +171,56 @@ console.log("== getChannelQuality（三组标定 → 档位）==");
   check("fromGroup 一致", getChannelQualityFromGroup("web_auto") === "safe");
 }
 
-console.log("== 协议帧头（feedback_capable 预留 + round-trip）==");
+console.log("== 传输帧头（CRC 自校验 + round-trip）==");
 {
-  const hdr = { version: 1, feedbackCapable: FEEDBACK_CAPABLE, profile: "safe" as const, totalBlocks: 1234 };
-  const back = parseFrameHeader(packFrameHeader(hdr));
-  check("帧头 pack→parse bit-exact", back.version === hdr.version && back.feedbackCapable === hdr.feedbackCapable && back.profile === hdr.profile && back.totalBlocks === hdr.totalBlocks);
-  check("feedback_capable 当前为 false（音频反馈暂缓，仅预留）", FEEDBACK_CAPABLE === false);
-  let threw = false;
-  try { parseFrameHeader(new Uint8Array([9, 0, 0, 0, 0])); } catch { threw = true; }
-  check("版本不匹配显式抛错（不静默）", threw);
+  const hdr = { fileId: 7, profile: 1, frameIndex: 3000, totalBytes: 5_000_000 };
+  const packed = packTransferHeader(hdr);
+  const back = parseTransferHeader(packed);
+  check(
+    "帧头 pack→parse bit-exact",
+    !!back && back.fileId === hdr.fileId && back.profile === hdr.profile && back.frameIndex === hdr.frameIndex && back.totalBytes === hdr.totalBytes
+  );
+  check("帧头 8 字节 = 64 bit", packed.length === HEADER_BYTES && HEADER_BITS === 64);
+  const corrupt = packed.slice();
+  corrupt[3] ^= 0xff;
+  check("比特翻转后 CRC 拒绝（不静默）", parseTransferHeader(corrupt) === null);
+  check("magic 不符返回 null", parseTransferHeader(new Uint8Array(HEADER_BYTES)) === null);
+  check("按位多数表决", majorityVoteBits([[1, 0, 1, 1], [1, 1, 1, 0], [0, 1, 1, 1]]).join("") === "1111");
+}
+
+console.log("== 产品传输链路（编码 → 理想解码 → 重组）==");
+{
+  const src = new Uint8Array(5000);
+  for (let i = 0; i < src.length; i++) src[i] = (i * 37 + 11) & 0xff;
+  const plan = planTransfer("safe", 1920, 1080, { fileId: 42 });
+  const res = encodeTransfer(src, plan);
+  check("cellPx 满足 safe 档下限 13", plan.cellPx >= 13, `实际 ${plan.cellPx}`);
+  check("每帧承载整数个 RS 码字", plan.blocksPerFrame >= 1);
+
+  const rs = new TransferReassembler(src.length);
+  let headersOk = true;
+  for (const f of res.frames) {
+    // 理想信道：直接把编码值当作解码结果（置信度全 1 → 零擦除）
+    const decoded: DecodedFrame = {
+      cols: f.cols,
+      rows: f.rows,
+      rotation: 0,
+      values: f.values,
+      cellMeta: f.cellMeta,
+      cells: Array.from(f.values, (v) =>
+        v < 0 ? null : { symbolIdx: 0, colorIdx: 0, value: v, colorConf: 1, symbolConf: 1, isData: true }
+      )
+    };
+    const fr = decodeTransferFrame(decoded, decodePlanFor("safe"));
+    if (!fr) {
+      headersOk = false;
+      break;
+    }
+    ingestFrame(fr, rs);
+  }
+  check("每帧帧头均可解出（CRC 通过）", headersOk);
+  check("全部数据块收齐", rs.isComplete(), `${rs.received}/${rs.totalBlocks}`);
+  check("还原文件 bit-exact", rs.isComplete() && sameBytes(rs.assemble(), src));
 }
 
 console.log(`\n结果：通过 ${pass}，失败 ${fail}`);
