@@ -1,6 +1,6 @@
 # 彩色数据传输系统 - 项目任务文档（TS 全栈版）
 
-> 最后更新：2026-09-06 ｜ 当前阶段：任务 3（修订版）执行中
+> 最后更新：2026-09-13 ｜ 当前阶段：任务 3 完成，已部署 Cloudflare Pages
 > 旧版 Python 计划（T01–T15）**已作废**，见文末「旧资产处理」。
 
 ## 高层决策（不可推翻，除非仿真/实测提供反证）
@@ -48,8 +48,16 @@ ColorTransfer/
 | T3E | getChannelQuality() 三组标定→档位 + 单元测试 | ✅ | web_auto→safe / web_locked→fast / native→fast |
 | T3F | DESIGN_DECISIONS.md（每条含反证条件） | ✅ | — |
 | T3G | 协议帧头协议.ts 预留 feedback_capable + 字节级 pack/unpack round-trip | ✅ | 版本不匹配显式抛错 |
-| T3H | 接收端定位/透视/旋转自适应/局部归一化解码（实拍回归） | ⬜ | 复用 calibration/photos 三组照片离线回归 |
-| T3I | eop 部署 HTTPS + 跨设备真机端到端实测并调优默认档位 | ⬜ | 公网地址 + 真机实测报告 |
+| T3H | 接收端定位/透视/旋转自适应/局部归一化解码（实拍回归） | ✅ | 复用 calibration/photos 三组照片离线回归 |
+| T3I | HTTPS 部署 + 跨设备真机端到端实测并调优默认档位 | ✅ | 公网地址 + 真机实测报告 |
+
+## 部署（Cloudflare Pages）
+
+- 方式：GitHub Actions（`.github/workflows/deploy-cloudflare.yml`）→ 构建 `web/` → 上传 `web/dist` 到 Cloudflare Pages 空项目 `color-transfer`（Direct upload）。
+- 触发：push 到 `main` 或手动 `workflow_dispatch`。
+- Secrets：`CLOUDFLARE_API_TOKEN`（权限 `Account → Cloudflare Pages → Edit`）、`CLOUDFLARE_ACCOUNT_ID`。
+- 产物地址：`https://color-transfer.pages.dev/`（HTTPS，满足手机端 `getUserMedia` 安全上下文要求）。
+- 注意：仓库不跟踪标定数据/调试产物（见 `.gitignore`），大体积文件仅保留在本地，避免每次推送数百 MB。
 
 ## 测试与铁律
 

@@ -46,6 +46,21 @@ npm run server       # Express 静态托管 + 健康检查
 
 `colorBits` 默认 = 1（双色：仅亮度+暗）。推荐方案见 `docs/MODULATION_BAKEOFF.md`（safe 档 M1：4bit 符号 + 2 色 + 四角校准，净吞吐 5.98 bit/格）。
 
+## 部署
+
+前端通过 **GitHub Actions + Cloudflare Pages** 部署：push 到 `main` 后自动构建 `web/` 并把 `web/dist` 上传到 Pages 项目 `color-transfer`。
+
+```bash
+# 一次性：在 GitHub 仓库 Settings → Secrets and variables → Actions 配置
+#   CLOUDFLARE_API_TOKEN   （权限 Account → Cloudflare Pages → Edit）
+#   CLOUDFLARE_ACCOUNT_ID
+git push origin main      # 触发自动部署
+```
+
+产物地址 `https://color-transfer.pages.dev/`（HTTPS，手机浏览器可直接调起 `getUserMedia`）。
+
+> 仓库**不跟踪**标定数据与调试产物（`calibration/photos`、`calibration/out_*`、录屏 zip 等，见 `.gitignore`），它们仅保留在本地用于离线回归。
+
 ## 铁律
 
 1. ECC 一律 RS + 喷泉，禁止汉明码。
