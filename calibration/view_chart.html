@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>测试卡查看器 · ColorTransfer</title>
+<style>
+  html, body { margin:0; height:100%; background:#808080; overflow:hidden; }
+  #c { position:fixed; image-rendering:pixelated; }
+  #s { position:fixed; left:8px; top:8px; z-index:10;
+       background:rgba(0,0,0,.72); color:#ffe9a8; font:12px/1.6 system-ui, "Microsoft YaHei";
+       padding:6px 10px; border-radius:6px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="s">加载中…</div>
+<script>
+"use strict";
+const q = new URLSearchParams(location.search);
+const img = new Image();
+img.src = q.get("img") || "charts/chart.png";
+img.onload = () => {
+  const cv = document.getElementById("c");
+  const st = document.getElementById("s");
+  cv.width = img.width; cv.height = img.height;
+  const ctx = cv.getContext("2d", { alpha: false });
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0);
+  const fit = () => {
+    // 1:1 设备像素映射：CSS 尺寸 = 图像像素 / devicePixelRatio。
+    // devicePixelRatio 已包含浏览器缩放，因此缩放不会破坏像素对位。
+    const dpr = window.devicePixelRatio || 1;
+    const cw = img.width / dpr, chh = img.height / dpr;
+    cv.style.width = cw + "px";
+    cv.style.height = chh + "px";
+    cv.style.left = Math.max(0, (innerWidth - cw) / 2) + "px";
+    cv.style.top = Math.max(0, (innerHeight - chh) / 2) + "px";
+    const vw = innerWidth * dpr, vh = innerHeight * dpr;
+    st.textContent = "图像 " + img.width + "×" + img.height + "px · 屏幕 " +
+      Math.round(vw) + "×" + Math.round(vh) + " 设备px (dpr=" + dpr.toFixed(2) + ") · " +
+        (img.width <= vw && img.height <= vh
+        ? "OK 1:1 完整显示，可以拍摄（F 全屏 / 点此隐藏提示）"
+        : "图像大于屏幕，四角会被裁掉！请用 make_chart.py --width/--height 按屏幕重新生成");
+  };
+  fit();
+  addEventListener("resize", fit);
+};
+img.onerror = () => {
+  document.getElementById("s").textContent = "图像加载失败：" + img.src +
+    " —— 可把 PNG 直接拖到本页打开，或用 ?img=charts/chart.png 指定";
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "f" || e.key === "F") {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  }
+});
+document.getElementById("s").addEventListener("click", () => {
+  document.getElementById("s").style.display = "none";
+});
+// 兜底：直接把本地 PNG 拖到页面即可打开（不依赖服务器 / ?img= 参数）
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f || !/image\//.test(f.type)) return;
+  const url = URL.createObjectURL(f);
+  img.src = url;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" font-family="PingFang SC, sans-serif">
+<rect width="640" height="420" fill="#0B0F1A"/>
+<text x="320" y="26" fill="#E5E7EB" font-size="18" text-anchor="middle">摩尔纹·颜色位宽 vs BER（web_locked, N=4）</text>
+<line x1="64" y1="48" x2="64" y2="364" stroke="#64748B"/>
+<line x1="64" y1="364" x2="620" y2="364" stroke="#64748B"/>
+<line x1="64" y1="364" x2="64" y2="368" stroke="#64748B"/>
+<text x="64" y="382" fill="#9CA3AF" font-size="12" text-anchor="middle">2</text>
+<line x1="175.2" y1="364" x2="175.2" y2="368" stroke="#64748B"/>
+<text x="175.2" y="382" fill="#9CA3AF" font-size="12" text-anchor="middle">3</text>
+<line x1="286.4" y1="364" x2="286.4" y2="368" stroke="#64748B"/>
+<text x="286.4" y="382" fill="#9CA3AF" font-size="12" text-anchor="middle">4</text>
+<line x1="397.59999999999997" y1="364" x2="397.59999999999997" y2="368" stroke="#64748B"/>
+<text x="397.59999999999997" y="382" fill="#9CA3AF" font-size="12" text-anchor="middle">5</text>
+<line x1="508.8" y1="364" x2="508.8" y2="368" stroke="#64748B"/>
+<text x="508.8" y="382" fill="#9CA3AF" font-size="12" text-anchor="middle">6</text>
+<line x1="620" y1="364" x2="620" y2="368" stroke="#64748B"/>
+<text x="620" y="382" fill="#9CA3AF" font-size="12" text-anchor="middle">7</text>
+<line x1="60" y1="364" x2="64" y2="364" stroke="#64748B"/>
+<text x="56" y="368" fill="#9CA3AF" font-size="12" text-anchor="end">1.0e-6</text>
+<line x1="60" y1="300.8" x2="64" y2="300.8" stroke="#64748B"/>
+<text x="56" y="304.8" fill="#9CA3AF" font-size="12" text-anchor="end">1.6e-5</text>
+<line x1="60" y1="237.60000000000002" x2="64" y2="237.60000000000002" stroke="#64748B"/>
+<text x="56" y="241.60000000000002" fill="#9CA3AF" font-size="12" text-anchor="end">2.5e-4</text>
+<line x1="60" y1="174.4" x2="64" y2="174.4" stroke="#64748B"/>
+<text x="56" y="178.4" fill="#9CA3AF" font-size="12" text-anchor="end">4.0e-3</text>
+<line x1="60" y1="111.19999999999996" x2="64" y2="111.19999999999996" stroke="#64748B"/>
+<text x="56" y="115.19999999999996" fill="#9CA3AF" font-size="12" text-anchor="end">6.3e-2</text>
+<line x1="60" y1="48" x2="64" y2="48" stroke="#64748B"/>
+<text x="56" y="52" fill="#9CA3AF" font-size="12" text-anchor="end">1.00</text>
+<text x="342" y="406" fill="#9CA3AF" font-size="13" text-anchor="middle">颜色位宽 (bit)</text>
+<text x="16" y="206" fill="#9CA3AF" font-size="13" text-anchor="middle" transform="rotate(-90 16 206)">BER</text>
+<polyline points="64.0,364.0 175.2,364.0 286.4,364.0 397.6,364.0 508.8,364.0 620.0,228.0" fill="none" stroke="#EF4444" stroke-width="2.5"/>
+<circle cx="64.0" cy="364.0" r="3" fill="#EF4444"/>
+<circle cx="175.2" cy="364.0" r="3" fill="#EF4444"/>
+<circle cx="286.4" cy="364.0" r="3" fill="#EF4444"/>
+<circle cx="397.6" cy="364.0" r="3" fill="#EF4444"/>
+<circle cx="508.8" cy="364.0" r="3" fill="#EF4444"/>
+<circle cx="620.0" cy="228.0" r="3" fill="#EF4444"/>
+<polyline points="64.0,364.0 175.2,364.0 286.4,364.0 397.6,364.0 508.8,364.0 620.0,364.0" fill="none" stroke="#F59E0B" stroke-width="2.5"/>
+<circle cx="64.0" cy="364.0" r="3" fill="#F59E0B"/>
+<circle cx="175.2" cy="364.0" r="3" fill="#F59E0B"/>
+<circle cx="286.4" cy="364.0" r="3" fill="#F59E0B"/>
+<circle cx="397.6" cy="364.0" r="3" fill="#F59E0B"/>
+<circle cx="508.8" cy="364.0" r="3" fill="#F59E0B"/>
+<circle cx="620.0" cy="364.0" r="3" fill="#F59E0B"/>
+<polyline points="64.0,364.0 175.2,364.0 286.4,364.0 397.6,364.0 508.8,224.5 620.0,136.6" fill="none" stroke="#3B82F6" stroke-width="2.5"/>
+<circle cx="64.0" cy="364.0" r="3" fill="#3B82F6"/>
+<circle cx="175.2" cy="364.0" r="3" fill="#3B82F6"/>
+<circle cx="286.4" cy="364.0" r="3" fill="#3B82F6"/>
+<circle cx="397.6" cy="364.0" r="3" fill="#3B82F6"/>
+<circle cx="508.8" cy="224.5" r="3" fill="#3B82F6"/>
+<circle cx="620.0" cy="136.6" r="3" fill="#3B82F6"/>
+<polyline points="64.0,364.0 175.2,364.0 286.4,364.0 397.6,364.0 508.8,137.3 620.0,108.9" fill="none" stroke="#22C55E" stroke-width="2.5"/>
+<circle cx="64.0" cy="364.0" r="3" fill="#22C55E"/>
+<circle cx="175.2" cy="364.0" r="3" fill="#22C55E"/>
+<circle cx="286.4" cy="364.0" r="3" fill="#22C55E"/>
+<circle cx="397.6" cy="364.0" r="3" fill="#22C55E"/>
+<circle cx="508.8" cy="137.3" r="3" fill="#22C55E"/>
+<circle cx="620.0" cy="108.9" r="3" fill="#22C55E"/>
+<line x1="72" y1="54" x2="90" y2="54" stroke="#EF4444" stroke-width="2.5"/>
+<text x="94" y="58" fill="#E5E7EB" font-size="12">单帧</text>
+<line x1="126" y1="54" x2="144" y2="54" stroke="#F59E0B" stroke-width="2.5"/>
+<text x="148" y="58" fill="#E5E7EB" font-size="12">多帧×8</text>
+<line x1="196" y1="54" x2="214" y2="54" stroke="#3B82F6" stroke-width="2.5"/>
+<text x="218" y="58" fill="#E5E7EB" font-size="12">带阻</text>
+<line x1="250" y1="54" x2="268" y2="54" stroke="#22C55E" stroke-width="2.5"/>
+<text x="272" y="58" fill="#E5E7EB" font-size="12">多帧×8+带阻</text>
+</svg>

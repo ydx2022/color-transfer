@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>光学信道标定测试卡 · ColorTransfer</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#808080; }
+  #chart { position:fixed; left:0; top:0; display:block; image-rendering:pixelated; }
+  #banner {
+    position:fixed; left:0; right:0; top:0; z-index:30;
+    background:#141414; color:#ffd98a;
+    font:13px/1.55 system-ui, "Microsoft YaHei", sans-serif;
+    padding:7px 14px; display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap;
+    border-bottom:1px solid #000;
+  }
+  #banner b { color:#fff; }
+  #banner .warn { color:#ff8f6b; font-weight:700; }
+  #banner button { font:12px system-ui; padding:3px 10px; cursor:pointer; }
+  #ui {
+    position:fixed; left:10px; bottom:10px; z-index:30;
+    background:rgba(18,18,18,.86); color:#eaeaea;
+    font:12px/1.65 system-ui, "Microsoft YaHei", sans-serif;
+    padding:10px 12px; border-radius:8px; max-width:min(430px, 93vw);
+    box-shadow:0 4px 18px rgba(0,0,0,.5);
+  }
+  #ui h3 { margin:0 0 6px; font-size:12px; color:#9fd0ff; letter-spacing:.5px; }
+  #ui label { display:inline-block; margin-right:10px; cursor:pointer; user-select:none; }
+  #ui .row { margin:5px 0; }
+  #ui button { font:12px system-ui; padding:4px 10px; cursor:pointer; margin-right:6px; }
+  #ui input[type=number] { width:74px; font:12px system-ui; }
+  #ui .hint { color:#a8b0b8; font-size:11px; }
+  #ui code { background:#2a2a2a; padding:1px 5px; border-radius:3px; color:#ffd98a; }
+  #stat { margin-top:6px; color:#9fd0ff; font-size:11px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+
+<div id="banner">
+  <span>拍摄前：<b>浏览器缩放 100%</b>（Ctrl+0）· <b>屏幕亮度最高</b> · 关闭夜间模式/护眼模式</span>
+  <span id="zoomWarn"></span>
+  <button id="btnHideBanner">隐藏提示</button>
+</div>
+
+<canvas id="chart"></canvas>
+
+<div id="ui">
+  <h3>标定测试卡控制</h3>
+  <div class="row">
+    <label><input type="checkbox" id="cbEdge"> 斜边/PSF</label>
+    <label><input type="checkbox" id="cbStripes"> 条纹组</label>
+    <label><input type="checkbox" id="cbGray"> 灰阶级梯</label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="cbColor"> 色块阵列</label>
+    <label><input type="checkbox" id="cbRepeat"> 重复图案</label>
+    <label><input type="checkbox" id="cbFid"> 定位标记</label>
+    <label><input type="checkbox" id="cbPpi"> 物理标尺</label>
+  </div>
+  <div class="row">
+    <button id="btnFs">全屏 (F)</button>
+    <button id="btnJson">导出布局 JSON</button>
+    <button id="btnAll">全选</button>
+    <button id="btnHideUi">隐藏面板 (H)</button>
+  </div>
+  <div class="row">
+    标尺实测长度 <input type="number" id="inMm" step="0.1" min="1" placeholder="mm"> mm
+    <button id="btnPpi">计算 PPI</button>
+  </div>
+  <div class="row hint">
+    URL 参数：<code>?edge=1&amp;stripes=1&amp;gray=1&amp;color=1&amp;repeat=1&amp;fid=1&amp;ppi=1</code>
+  </div>
+  <div id="stat"></div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   光学信道标定测试卡
+   - 全部在 canvas 的 *设备像素* 空间绘制（backing store = CSS px * devicePixelRatio）
+   - 布局（layout）与绘制使用同一份数据，导出的 layout.json 与画面严格一致
+   - layout.json 是分析脚本的唯一真值（ground truth）来源
+   ========================================================================= */
+
+const PERIODS   = [2, 3, 4, 5, 6, 8, 10, 12, 16];  // 条纹周期（屏幕像素）
+const GRAY_STEPS = 32;
+const COLORS = [
+  // RGB 立方体 8 角
+  [0,0,0,"black"],      [255,255,255,"white"],  [255,0,0,"red"],      [0,255,0,"green"],
+  [0,0,255,"blue"],     [255,255,0,"yellow"],   [0,255,255,"cyan"],   [255,0,255,"magenta"],
+  // 中性灰阶
+  [32,32,32,"n32"],     [64,64,64,"n64"],       [128,128,128,"n128"], [192,192,192,"n192"],
+  [224,224,224,"n224"],
+  // 暗原色
+  [128,0,0,"dark-red"], [0,128,0,"dark-green"], [0,0,128,"dark-blue"],
+  // 二次色（暗）
+  [128,128,0,"dk-yellow"], [0,128,128,"dk-cyan"], [128,0,128,"dk-magenta"],
+  // 高亮混合色
+  [255,128,0,"orange"],    [0,255,128,"spring"],   [128,0,255,"violet"],
+  [128,255,0,"chartreuse"],[0,128,255,"azure"]
+];
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* ---------------- URL 参数 ---------------- */
+function params() {
+  const q = new URLSearchParams(location.search);
+  const num = (k, d) => (q.has(k) ? (parseInt(q.get(k), 10) ? 1 : 0) : d);
+  return {
+    edge:    num("edge", 1),
+    stripes: num("stripes", 1),
+    gray:    (q.has("gray") ? (parseInt(q.get("gray"), 10) ? 1 : 0) : num("gamma", 1)),
+    color:   num("color", 1),
+    repeat:  num("repeat", 1),
+    fid:     num("fid", 1),
+    ppi:     num("ppi", 1)
+  };
+}
+const OPT = params();
+
+/* ---------------- 布局构建 ---------------- */
+// 说明布局理由（写进 layout.json 的 notes，也见 README）：
+// 1) 四角定位标记内缩，重复图案副本贴到画面最边缘，暗角测量才够"角落"；
+// 2) 主体测量区放在中央安全区，用上下两个盒子避让正中的重复图案副本；
+// 3) 斜边/条纹/灰阶/色块彼此留 24px 间隙，避免相互干扰，也可用 URL 分区域单拍。
+function buildLayout(W, H, dpr) {
+  const BG = 128;
+  const GAP = 24;
+  const RS  = clamp(Math.round(Math.min(W, H) * 0.045), 40, 72);   // 重复图案副本边长
+  const F   = clamp(Math.round(Math.min(W, H) * 0.075), 56, 130);  // 定位标记边长
+  const REP_INSET = 12;
+  const FID_INSET = REP_INSET + RS + 18;
+
+  const L = {
+    version: 1,
+    created: new Date().toISOString(),
+    canvas: { w: W, h: H, dpr: dpr, css_w: Math.round(W / dpr), css_h: Math.round(H / dpr) },
+    background: BG,
+    ppi: null,
+    ppi_line: null,
+    fiducials: [],
+    regions: { edge: null, stripes: [], gray: [], color: [], repeat: [] },
+    notes:
+      "坐标单位 = 画布设备像素(= CSS px * dpr)。regions 内 x,y 为左上角。" +
+      "fiducials 为同心三方块(黑-白-黑)，x,y 为外框左上角，size 为外框边长。" +
+      "stripes.orientation: vertical=竖条(周期沿X)，horizontal=横条(周期沿Y)。"
+  };
+
+  /* --- 定位标记（四角，内缩） --- */
+  if (OPT.fid) {
+    const pos = [
+      ["tl", FID_INSET, FID_INSET],
+      ["tr", W - FID_INSET - F, FID_INSET],
+      ["bl", FID_INSET, H - FID_INSET - F],
+      ["br", W - FID_INSET - F, H - FID_INSET - F]
+    ];
+    for (const [id, x, y] of pos) L.fiducials.push({ id, x, y, size: F });
+  }
+
+  /* --- 重复图案组：中心 + 四角 + 四边中点，共 9 份 --- */
+  if (OPT.repeat) {
+    const cx = Math.round((W - RS) / 2), cy = Math.round((H - RS) / 2);
+    const spots = [
+      ["center", cx, cy],
+      ["tl", REP_INSET, REP_INSET],
+      ["tr", W - RS - REP_INSET, REP_INSET],
+      ["bl", REP_INSET, H - RS - REP_INSET],
+      ["br", W - RS - REP_INSET, H - RS - REP_INSET],
+      ["top", cx, REP_INSET],
+      ["bottom", cx, H - RS - REP_INSET],
+      ["left", REP_INSET, cy],
+      ["right", W - RS - REP_INSET, cy]
+    ];
+    for (const [id, x, y] of spots) L.regions.repeat.push({ id, x, y, w: RS, h: RS, size: RS });
+  }
+
+  /* --- 中央安全区（避开定位标记与正中的重复图案副本） --- */
+  const x0 = OPT.fid ? FID_INSET + F + GAP : REP_INSET + RS + GAP;
+  const y0 = OPT.fid ? FID_INSET + F + GAP : REP_INSET + RS + GAP;
+  const x1 = W - x0, y1 = H - y0;
+  const innerW = Math.max(80, x1 - x0), innerH = Math.max(80, y1 - y0);
+
+  let boxes;
+  if (OPT.repeat) {
+    const cy = Math.round(H / 2);
+    const topH = cy - RS / 2 - 16 - y0;
+    const botY = cy + RS / 2 + 16;
+    const botH = y1 - botY;
+    if (topH > 90 && botH > 90) {
+      boxes = [{ x: x0, y: y0, w: innerW, h: topH }, { x: x0, y: botY, w: innerW, h: botH }];
+    } else {
+      boxes = [{ x: x0, y: y0, w: innerW, h: innerH }];  // 空间不足则允许正中副本被覆盖
+    }
+  } else {
+    boxes = [{ x: x0, y: y0, w: innerW, h: innerH }];
+  }
+
+  const P = { bi: 0, cx: 0, cy: 0, rowH: 0 };
+  function place(w, h) {
+    while (P.bi < boxes.length) {
+      const b = boxes[P.bi];
+      if (w > b.w) { P.bi++; P.cx = P.cy = P.rowH = 0; continue; }
+      if (P.cx + w > b.w) { P.cx = 0; P.cy += P.rowH + GAP; P.rowH = 0; }
+      if (P.cy + h > b.h) { P.bi++; P.cx = P.cy = P.rowH = 0; continue; }
+      const r = { x: b.x + P.cx, y: b.y + P.cy, w, h };
+      P.cx += w + GAP; P.rowH = Math.max(P.rowH, h);
+      return r;
+    }
+    return null;
+  }
+
+  const overflow = [];
+
+  /* --- 1. 斜边区（ISO 12233 slanted edge，倾斜 5°） --- */
+  if (OPT.edge) {
+    const w = Math.min(Math.max(240, Math.round(innerW * 0.62)), innerW);
+    const h = 340;   // 5° 倾斜在 w=760 时升高约 66px，h=340 足够容纳上下留白
+    const r = place(w, h);
+    if (r) { r.angle_deg = 5.0; L.regions.edge = r; } else overflow.push("edge");
+  }
+
+  /* --- 2. 多周期条纹组（竖条 + 横条） --- */
+  // 每组 >= 8 个周期（要求 >=5），且沿周期方向长度 >= 72px
+  if (OPT.stripes) {
+    const cross = 64;
+    const lenOf = p => Math.max(72, p * 8);
+
+    // 竖条：周期沿 X
+    {
+      const totalW = PERIODS.reduce((s, p) => s + lenOf(p), 0) + GAP2 * (PERIODS.length - 1);
+      if (totalW <= innerW) {
+        const r = place(totalW, cross);
+        if (r) {
+          let cx = r.x;
+          for (const p of PERIODS) {
+            const pw = lenOf(p);
+            L.regions.stripes.push({ id: "sv_p" + p, x: cx, y: r.y, w: pw, h: cross, period: p, orientation: "vertical" });
+            cx += pw + GAP2;
+          }
+        } else overflow.push("stripes-vertical");
+      } else {
+        // 放不下就按行拆分成两块
+        let idx = 0;
+        while (idx < PERIODS.length) {
+          let rowW = 0, n = 0;
+          while (idx + n < PERIODS.length && rowW + lenOf(PERIODS[idx + n]) + (n ? GAP2 : 0) <= innerW) {
+            rowW += lenOf(PERIODS[idx + n]) + (n ? GAP2 : 0); n++;
+          }
+          if (n === 0) break;
+          const r = place(rowW, cross);
+          if (!r) { overflow.push("stripes-vertical"); break; }
+          let cx = r.x;
+          for (let i = 0; i < n; i++) {
+            const p = PERIODS[idx + i], pw = lenOf(p);
+            L.regions.stripes.push({ id: "sv_p" + p, x: cx, y: r.y, w: pw, h: cross, period: p, orientation: "vertical" });
+            cx += pw + GAP2;
+          }
+          idx += n;
+        }
+      }
+    }
+    // 横条：周期沿 Y
+    {
+      const colW = 64, gapX = GAP2;
+      const totalW = PERIODS.length * colW + gapX * (PERIODS.length - 1);
+      const totalH = Math.max(...PERIODS.map(lenOf));
+      const r = place(Math.min(totalW, innerW), totalH);
+      if (r) {
+        let cx = r.x;
+        for (const p of PERIODS) {
+          L.regions.stripes.push({ id: "sh_p" + p, x: cx, y: r.y, w: colW, h: lenOf(p), period: p, orientation: "horizontal" });
+          cx += colW + gapX;
+        }
+      } else overflow.push("stripes-horizontal");
+    }
+  }
+
+  /* --- 3. 灰阶级梯（32 级，0→255 等间隔） --- */
+  if (OPT.gray) {
+    const gap = 4;
+    const step = clamp(Math.floor((innerW - gap * (GRAY_STEPS - 1)) / GRAY_STEPS), 24, 48);
+    const totalW = step * GRAY_STEPS + gap * (GRAY_STEPS - 1);
+    const r = place(totalW, 100);
+    if (r) {
+      for (let i = 0; i < GRAY_STEPS; i++) {
+        const v = Math.round(i * 255 / (GRAY_STEPS - 1));
+        L.regions.gray.push({ id: "g" + i, x: r.x + i * (step + gap), y: r.y, w: step, h: 100, value: v });
+      }
+    } else overflow.push("gray");
+  }
+
+  /* --- 4. 色块阵列（24 个已知 sRGB） --- */
+  if (OPT.color) {
+    const pw = clamp(Math.round(Math.min(W, H) * 0.055), 48, 96), gap = 10;
+    const cols = Math.max(1, Math.min(COLORS.length, Math.floor((innerW + gap) / (pw + gap))));
+    const rows = Math.ceil(COLORS.length / cols);
+    const totalW = cols * pw + (cols - 1) * gap;
+    const totalH = rows * pw + (rows - 1) * gap;
+    const r = place(totalW, totalH);
+    if (r) {
+      COLORS.forEach((c, i) => {
+        const cxi = i % cols, cyi = Math.floor(i / cols);
+        L.regions.color.push({
+          id: "c" + i, name: c[3],
+          x: r.x + cxi * (pw + gap), y: r.y + cyi * (pw + gap),
+          w: pw, h: pw, rgb: [c[0], c[1], c[2]]
+        });
+      });
+    } else overflow.push("color");
+  }
+
+  /* --- 5. 物理标尺（已知 CSS 像素长度，用户用尺子量实际毫米） --- */
+  if (OPT.ppi) {
+    const wantCss = 900;
+    const devLen = Math.min(Math.round(wantCss * dpr), innerW - 40);
+    const r = place(Math.max(200, devLen), 90);
+    if (r) {
+      const len = Math.max(200, Math.min(devLen, r.w - 20));
+      L.ppi_line = {
+        x1: r.x + 10, y1: r.y + 55, x2: r.x + 10 + len, y2: r.y + 55,
+        dev_len: len, css_len: len / dpr
+      };
+    } else overflow.push("ppi");
+  }
+
+  L.overflow = overflow;
+  return L;
+}
+const GAP2 = 16;
+
+/* ---------------- 绘制 ---------------- */
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d", { alpha: false });
+let LAYOUT = null;
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = window.innerWidth, cssH = window.innerHeight;
+  const W = Math.max(320, Math.round(cssW * dpr));
+  const H = Math.max(320, Math.round(cssH * dpr));
+
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = cssW + "px"; canvas.style.height = cssH + "px";
+
+  const L = buildLayout(W, H, dpr);
+  LAYOUT = L;
+
+  // 背景：中灰（利于曝光稳定，也让黑白特征突出）
+  ctx.fillStyle = "rgb(128,128,128)";
+  ctx.fillRect(0, 0, W, H);
+
+  if (OPT.edge && L.regions.edge) drawEdge(L.regions.edge);
+  for (const s of L.regions.stripes) drawStripes(s);
+  for (const g of L.regions.gray) { ctx.fillStyle = `rgb(${g.value},${g.value},${g.value})`; ctx.fillRect(g.x, g.y, g.w, g.h); }
+  for (const c of L.regions.color) { ctx.fillStyle = `rgb(${c.rgb[0]},${c.rgb[1]},${c.rgb[2]})`; ctx.fillRect(c.x, c.y, c.w, c.h); }
+  if (OPT.ppi && L.ppi_line) drawPpi(L.ppi_line, dpr);
+  for (const r of L.regions.repeat) drawRepeat(r);
+  for (const f of L.fiducials) drawFiducial(f);
+
+  updateStat(L, dpr);
+}
+
+function drawEdge(r) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(r.x, r.y, r.w, r.h);
+  const tan = Math.tan(r.angle_deg * Math.PI / 180);
+  const midY = r.y + r.h / 2, midX = r.x + r.w / 2;
+  const yAt = x => midY + tan * (x - midX);
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  ctx.moveTo(r.x + r.w, r.y + r.h);
+  for (let x = r.x + r.w; x >= r.x; x--) ctx.lineTo(x, yAt(x));
+  ctx.lineTo(r.x, r.y + r.h);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // 外框（不计入测量，仅肉眼对齐；分析时会内缩 12% 避开）
+  ctx.strokeStyle = "#ff0000"; ctx.lineWidth = 2;
+  ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+}
+
+function drawStripes(s) {
+  // 二值方波：白/黑交替，沿周期方向 1 设备像素一格
+  if (s.orientation === "vertical") {
+    for (let i = 0; i < s.w; i++) {
+      const on = (Math.floor(i / s.period) % 2) === 0;
+      ctx.fillStyle = on ? "#ffffff" : "#000000";
+      ctx.fillRect(s.x + i, s.y, 1, s.h);
+    }
+  } else {
+    for (let j = 0; j < s.h; j++) {
+      const on = (Math.floor(j / s.period) % 2) === 0;
+      ctx.fillStyle = on ? "#ffffff" : "#000000";
+      ctx.fillRect(s.x, s.y + j, s.w, 1);
+    }
+  }
+  ctx.strokeStyle = "#ff0000"; ctx.lineWidth = 1;
+  ctx.strokeRect(s.x + .5, s.y + .5, s.w - 1, s.h - 1);
+}
+
+function drawRepeat(r) {
+  const q = Math.floor(r.w / 2);
+  // 左上：中灰（测亮度/暗角）；右上：2px 细条纹（测局部对比度/MTF 代理）
+  // 左下：黑；右下：白（测黑白电平与对比度）
+  ctx.fillStyle = "rgb(128,128,128)"; ctx.fillRect(r.x, r.y, q, q);
+  for (let i = 0; i < q; i++) {
+    ctx.fillStyle = (Math.floor(i / 2) % 2 === 0) ? "#ffffff" : "#000000";
+    ctx.fillRect(r.x + q + i, r.y, 1, q);
+  }
+  ctx.fillStyle = "#000000"; ctx.fillRect(r.x, r.y + q, q, r.w - q);
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(r.x + q, r.y + q, r.w - q, r.w - q);
+  ctx.strokeStyle = "#ff0000"; ctx.lineWidth = 1;
+  ctx.strokeRect(r.x + .5, r.y + .5, r.w - 1, r.h - 1);
+}
+
+// 同心三方块：黑(F) → 白(0.62F) → 黑(0.28F)。
+// 三层嵌套在整张图里唯一，便于 findContours + 层级关系稳定检出。
+function drawFiducial(f) {
+  const c = f.x + f.size / 2;
+  const sq = (size, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(c - size / 2), Math.round(c - size / 2), Math.round(size), Math.round(size));
+  };
+  sq(f.size, "#000000");
+  sq(f.size * 0.62, "#ffffff");
+  sq(f.size * 0.28, "#000000");
+}
+
+function drawPpi(line, dpr) {
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(2, Math.round(2 * dpr));
+  ctx.beginPath();
+  ctx.moveTo(line.x1, line.y1); ctx.lineTo(line.x2, line.y2);
+  ctx.stroke();
+  const tick = Math.round(22 * dpr);
+  ctx.beginPath();
+  ctx.moveTo(line.x1, line.y1 - tick); ctx.lineTo(line.x1, line.y1 + tick);
+  ctx.moveTo(line.x2, line.y2 - tick); ctx.lineTo(line.x2, line.y2 + tick);
+  ctx.stroke();
+  ctx.fillStyle = "#ffff00";
+  ctx.font = `${Math.round(16 * dpr)}px system-ui, "Microsoft YaHei", sans-serif`;
+  ctx.fillText(`标尺 ${Math.round(line.css_len)} CSS px（用尺量出毫米后在左下角输入）`,
+    line.x1, line.y1 - tick - Math.round(6 * dpr));
+}
+
+/* ---------------- UI ---------------- */
+const ids = { edge: "cbEdge", stripes: "cbStripes", gray: "cbGray", color: "cbColor", repeat: "cbRepeat", fid: "cbFid", ppi: "cbPpi" };
+function syncUI() { for (const k in ids) document.getElementById(ids[k]).checked = !!OPT[k]; }
+function syncURL() {
+  const q = new URLSearchParams();
+  for (const k in ids) q.set(k, OPT[k] ? 1 : 0);
+  history.replaceState(null, "", "?" + q.toString());
+}
+for (const k in ids) {
+  document.getElementById(ids[k]).addEventListener("change", e => {
+    OPT[k] = e.target.checked ? 1 : 0; syncURL(); draw();
+  });
+}
+document.getElementById("btnAll").addEventListener("click", () => {
+  for (const k in ids) OPT[k] = 1; syncUI(); syncURL(); draw();
+});
+const uiPanel = document.getElementById("ui");
+function toggleUi() { uiPanel.style.display = (uiPanel.style.display === "none") ? "" : "none"; }
+document.getElementById("btnHideUi").addEventListener("click", toggleUi);
+document.getElementById("btnFs").addEventListener("click", () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) el.requestFullscreen && el.requestFullscreen();
+  else document.exitFullscreen && document.exitFullscreen();
+});
+document.getElementById("btnJson").addEventListener("click", exportJson);
+document.getElementById("btnPpi").addEventListener("click", () => {
+  const mm = parseFloat(document.getElementById("inMm").value);
+  if (!LAYOUT || !LAYOUT.ppi_line || !mm || mm <= 0) { alert("请先显示标尺并填入实测毫米数"); return; }
+  const inches = mm / 25.4;
+  const ppi = LAYOUT.ppi_line.css_len / inches;
+  LAYOUT.ppi = ppi;
+  LAYOUT.ppi_mm = mm;
+  updateStat(LAYOUT, window.devicePixelRatio || 1);
+});
+document.getElementById("btnHideBanner").addEventListener("click", () => {
+  document.getElementById("banner").style.display = "none";
+  draw();
+});
+
+function exportJson() {
+  if (!LAYOUT) return;
+  const blob = new Blob([JSON.stringify(LAYOUT, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "layout.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+
+function updateStat(L, dpr) {
+  const zoom = (window.visualViewport && window.visualViewport.scale) ? window.visualViewport.scale : 1;
+  const lines = [
+    `画布 ${L.canvas.w}×${L.canvas.h} 设备px   CSS ${L.canvas.css_w}×${L.canvas.css_h}   dpr=${dpr}`,
+    `浏览器缩放 scale=${zoom.toFixed(3)} ${Math.abs(zoom - 1) > 0.01 ? "← 请按 Ctrl+0 恢复 100%！" : "(100%)"}`,
+    `PPI: ${L.ppi ? L.ppi.toFixed(1) + " (实测 " + L.ppi_mm + "mm)" : "未标定"}`,
+    `区域数：条纹 ${L.regions.stripes.length} / 灰阶 ${L.regions.gray.length} / 色块 ${L.regions.color.length} / 重复 ${L.regions.repeat.length}`,
+    L.overflow.length ? `⚠ 放不下：${L.overflow.join(", ")}（请用 URL 参数分区域拍摄）` : ""
+  ];
+  document.getElementById("stat").textContent = lines.filter(Boolean).join("\n");
+  const zw = document.getElementById("zoomWarn");
+  zw.textContent = Math.abs(zoom - 1) > 0.01 ? "⚠ 检测到浏览器缩放非 100%" : "";
+  zw.className = Math.abs(zoom - 1) > 0.01 ? "warn" : "";
+}
+
+/* 禁用 Ctrl+滚轮 / Ctrl+加减 的浏览器缩放 */
+window.addEventListener("wheel", e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+window.addEventListener("keydown", e => {
+  if (e.ctrlKey && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault();
+  if (e.key === "f" || e.key === "F") {
+    if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+    document.getElementById("btnFs").click();
+  }
+  if (e.key === "h" || e.key === "H") {
+    if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+    toggleUi();
+  }
+});
+window.addEventListener("resize", draw);
+window.addEventListener("orientationchange", draw);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", draw);
+
+syncUI(); syncURL(); draw();
+</script>
+</body>
+</html>

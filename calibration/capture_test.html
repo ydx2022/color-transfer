@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<title>拍摄 · ColorTransfer 标定</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; height:100%; background:#000; color:#eee;
+               font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif; overscroll-behavior:none; }
+  body { display:flex; flex-direction:column; height:100dvh; overflow:hidden; }
+
+  /* 顶部状态条 */
+  #bar { flex:0 0 auto; background:#141414; padding:5px 8px; font-size:12px;
+         display:flex; gap:10px; flex-wrap:wrap; align-items:center; border-bottom:1px solid #2a2a2a; }
+  #bar b { font-weight:600; }
+
+  /* 视频主区：占满剩余高度 */
+  #stage { flex:1 1 auto; position:relative; min-height:0; background:#000;
+           display:flex; align-items:center; justify-content:center; }
+  #vid { max-width:100%; max-height:100%; object-fit:contain; display:block; }
+
+  /* HUD：叠加在视频底部，直方图 + 曝光提示 */
+  #hud { position:absolute; left:0; right:0; bottom:0; padding:4px 6px 6px;
+         background:linear-gradient(transparent,rgba(0,0,0,.72) 40%); pointer-events:none; }
+  #hist { width:100%; height:44px; display:block; opacity:.9; }
+  #expo { font-size:11px; text-align:center; margin-top:2px; }
+
+  /* 底部操作栏：常驻，一屏内可见 */
+  #ops { flex:0 0 auto; background:#141414; border-top:1px solid #2a2a2a; padding:6px 8px; }
+  .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .row + .row { margin-top:6px; }
+  button { background:#2b6cb0; color:#fff; border:0; border-radius:6px;
+           padding:9px 10px; font-size:14px; flex:1 1 auto; min-width:0; }
+  button:disabled { background:#3a3a3a; color:#888; }
+  button.lock { background:#2f855a; }
+  button.ghost { background:#3a3a3a; flex:0 0 auto; }
+  .mini { font-size:11px; color:#9ab; display:flex; align-items:center; gap:3px; }
+  .mini input { width:62px; background:#222; color:#eee; border:1px solid #444;
+                border-radius:4px; padding:3px 4px; font-size:12px; }
+  #cnt { margin-left:auto; font-size:12px; color:#fd4; }
+
+  /* 折叠详情：默认收起，不占拍摄视野 */
+  #more { flex:0 0 auto; max-height:46vh; overflow:auto; background:#111;
+          border-top:1px solid #2a2a2a; }
+  #more[open] { flex:0 0 auto; }
+  summary { padding:8px 10px; font-size:13px; color:#9ab; background:#161616; cursor:pointer; }
+  .card { padding:8px 10px; border-bottom:1px solid #222; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  td,th { border-bottom:1px solid #2a2a2a; padding:3px 5px; text-align:left; }
+  th { color:#9ab; font-weight:600; }
+  .ok { color:#6f6; } .warn { color:#fd4; } .bad { color:#f66; }
+  .hint { color:#9ab; font-size:12px; }
+  #thumbs { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+  #thumbs img { width:64px; height:48px; object-fit:cover; border:1px solid #444; border-radius:4px; }
+  #log { font-size:11px; color:#8aa; max-height:120px; overflow:auto; }
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <span id="env"></span>
+  <span id="lockStat">未启动</span>
+</div>
+
+<div id="stage">
+  <video id="vid" playsinline autoplay muted></video>
+  <div id="hud">
+    <canvas id="hist" width="256" height="44"></canvas>
+    <div id="expo"></div>
+  </div>
+</div>
+
+<div id="ops">
+  <div class="row">
+    <button id="btnStart">① 启动</button>
+    <button id="btnFocus" class="lock" disabled>对焦锁定</button>
+    <button id="btnExp" class="lock" disabled>曝光/WB</button>
+    <button id="btnAuto" class="ghost" disabled>全自动</button>
+  </div>
+  <div class="row">
+    <button id="btnCap" disabled>② 拍摄 ×5</button>
+    <button id="btnZip" disabled>③ 下载</button>
+    <span class="mini">ISO<input type="number" id="iso" value="100" min="50" max="3200"></span>
+    <span class="mini">K<input type="number" id="ct" value="5000" min="2850" max="7000" step="50"></span>
+    <span id="cnt"></span>
+  </div>
+</div>
+
+<details id="more">
+  <summary>详细信息（能力表 / 说明 / 日志）</summary>
+  <div class="card">
+    <b>摄像头能力探测</b>
+    <div class="hint">缺项 = 该参数无法锁定，自动处理不可避免。</div>
+    <table id="caps"></table>
+  </div>
+  <div class="card">
+    <b>拍摄要求</b>
+    <div class="hint">
+      1. 屏幕端用 <code>view_chart.html</code> 全屏 1:1 显示测试卡（F 全屏）。<br>
+      2. 让测试卡<b>四角定位标记完整入画</b>且尽量占满画面。<br>
+      3. 锁定后直方图两侧不撞墙（过曝/欠曝 &lt; 1%）。<br>
+      4. 拍多张用于验证锁定是否消除了漂移。<br>
+      5. 锁定能显著降低 σ_PSF 方差（实测 47% → 6%）与噪声（14.9 → 0.5）。
+    </div>
+  </div>
+  <div class="card">
+    <div id="log"></div>
+    <button id="btnClear" class="ghost" disabled>清空已拍</button>
+    <div id="thumbs"></div>
+  </div>
+</details>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const vid = $("vid"), hist = $("hist"), hctx = hist.getContext("2d");
+let stream = null, vtrack = null, frames = [], caps = {};
+
+function log(s) { $("log").innerHTML += s + "<br>"; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- 环境 ---------- */
+(function env() {
+  const sec = window.isSecureContext;
+  const hasGM = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  $("env").innerHTML = `安全：<b class="${sec ? "ok" : "bad"}">${sec}</b>　`
+    + `摄像头：<b class="${hasGM ? "ok" : "bad"}">${hasGM}</b>`;
+  if (!sec) log('<span class="bad">非安全上下文，摄像头会被禁用。请用 https:// 打开。</span>');
+})();
+
+/* ---------- 启动 ---------- */
+async function startCamera() {
+  const levels = [
+    ["后置+高分辨率", { video: { facingMode: { exact: "environment" },
+        width: { ideal: 4096 }, height: { ideal: 3072 } }, audio: false }],
+    ["后置", { video: { facingMode: { ideal: "environment" } }, audio: false }],
+    ["任意摄像头", { video: true, audio: false }]
+  ];
+  for (const [label, c] of levels) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(c);
+      vtrack = stream.getVideoTracks()[0];
+      caps = vtrack.getCapabilities ? vtrack.getCapabilities() : {};
+      vid.srcObject = stream;
+      await vid.play().catch(() => {});
+      $("btnCap").disabled = false;
+      ["btnFocus", "btnExp", "btnAuto"].forEach(b => $(b).disabled = false);
+      log(`<span class="ok">启动成功</span>：${label}`);
+      showCaps(); updateLockStat(); loopHist();
+      return true;
+    } catch (err) { log(`降级「${label}」失败：${err.name}`); }
+  }
+  log(`<span class="bad">无法启动摄像头</span>`);
+  return false;
+}
+
+async function setC(c, label) {
+  try { await vtrack.applyConstraints(c); return true; }
+  catch (e) { log(`约束失败 ${label}：${e.name}`); return false; }
+}
+
+/* ---------- 能力探测 ---------- */
+function showCaps() {
+  const set = vtrack.getSettings ? vtrack.getSettings() : {};
+  const has = k => caps[k] ? "ok" : "bad";
+  const items = [
+    ["分辨率", set.width && set.height ? `${set.width}×${set.height}` : "?", "ok"],
+    ["对焦", caps.focusMode ? caps.focusMode.join("/") : "不支持", has("focusMode")],
+    ["曝光模式", caps.exposureMode ? caps.exposureMode.join("/") : "不支持", has("exposureMode")],
+    ["ISO", caps.iso ? `${caps.iso.min}~${caps.iso.max}` : "不支持", has("iso")],
+    ["白平衡", caps.whiteBalanceMode ? caps.whiteBalanceMode.join("/") : "不支持", has("whiteBalanceMode")]
+  ];
+  $("caps").innerHTML = "<tr><th>项</th><th>能力</th></tr>" +
+    items.map(([k, v, c]) => `<tr><td>${k}</td><td class="${c}">${v}</td></tr>`).join("");
+}
+
+/* ---------- 曝光/清晰度统计 ---------- */
+function expoStat() {
+  const w = 160, h = Math.round(w * vid.videoHeight / vid.videoWidth) || 120;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const cx = c.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(vid, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h).data;
+  let over = 0, under = 0, sum = 0; const n = w * h;
+  for (let i = 0; i < d.length; i += 4) {
+    const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    if (y >= 254) over++;
+    if (y <= 1) under++;
+    sum += y;
+  }
+  return { over: over / n, under: under / n, mean: sum / n };
+}
+
+function laplacianVar() {
+  const w = 320, h = Math.round(w * vid.videoHeight / vid.videoWidth) || 240;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const cx = c.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(vid, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h).data;
+  const g = new Float32Array(w * h);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  let s1 = 0, s2 = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x;
+    const v = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w];
+    s1 += v; s2 += v * v; n++;
+  }
+  const m = s1 / n;
+  return s2 / n - m * m;
+}
+
+/* ---------- 参数锁定 ---------- */
+async function focusLock() {
+  if (!caps.focusMode || caps.focusMode.indexOf("manual") < 0 || !caps.focusDistance) {
+    log(`<span class="bad">不支持手动对焦，无法锁定（该设备只能接受漂移）</span>`);
+    return;
+  }
+  $("btnFocus").disabled = true;
+  log("扫描对焦中（约 5 秒，请勿移动）…");
+  await setC({ advanced: [{ focusMode: "manual" }] }, "focusMode");
+  const lo = Math.max(0.09, caps.focusDistance.min || 0.09);
+  const hi = Math.min(8.0, caps.focusDistance.max && caps.focusDistance.max < 100
+    ? caps.focusDistance.max : 3.0);
+  const N = 15;
+  let best = { d: lo, score: -1 };
+  for (let i = 0; i <= N; i++) {
+    const d = lo + (hi - lo) * i / N;
+    await setC({ advanced: [{ focusDistance: d }] }, "focusDistance");
+    await sleep(260);
+    const s = laplacianVar();
+    if (s > best.score) best = { d: d, score: s };
+  }
+  await setC({ advanced: [{ focusDistance: best.d }] }, "focusDistance-final");
+  log(`<span class="ok">对焦锁定</span>：${best.d.toFixed(3)}m（清晰度 ${best.score.toFixed(0)}）`);
+  $("btnFocus").disabled = false;
+  updateLockStat();
+}
+
+async function expLock() {
+  const iso = +$("iso").value || 100;
+  const ct = +$("ct").value || 5000;
+  $("btnExp").disabled = true;
+  if (!caps.exposureMode || caps.exposureMode.indexOf("manual") < 0) {
+    log(`<span class="bad">不支持手动曝光</span>`);
+  } else {
+    log("搜索快门中（约 4 秒）…");
+    await setC({ advanced: [{ exposureMode: "manual", iso: iso }] }, "exp manual");
+    const tmin = Math.max(0.1, caps.exposureTime ? caps.exposureTime.min : 0.1);
+    const tmax = Math.min(100, caps.exposureTime ? caps.exposureTime.max : 100);
+    let best = null;
+    for (let i = 0; i <= 12; i++) {
+      const t = tmin * Math.pow(tmax / tmin, i / 12);
+      await setC({ advanced: [{ exposureTime: t }] }, "exposureTime");
+      await sleep(220);
+      const st = expoStat();
+      const score = -Math.abs(st.mean - 110) - 800 * Math.max(0, st.over - 0.004);
+      if (!best || score > best.score) best = { t: t, score: score, st: st };
+    }
+    await setC({ advanced: [{ exposureTime: best.t }] }, "exposureTime-final");
+    log(`<span class="ok">曝光锁定</span>：ISO ${iso}，快门 ${best.t.toFixed(1)}ms，`
+      + `过曝 ${(best.st.over * 100).toFixed(2)}%，均值 ${best.st.mean.toFixed(0)}`);
+  }
+  if (caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf("manual") >= 0) {
+    await setC({ advanced: [{ whiteBalanceMode: "manual", colorTemperature: ct }] }, "wb");
+    log(`<span class="ok">白平衡锁定</span>：${ct}K`);
+  } else {
+    log(`<span class="bad">不支持手动白平衡</span>`);
+  }
+  $("btnExp").disabled = false;
+  updateLockStat();
+}
+
+async function restoreAuto() {
+  await setC({ advanced: [{ focusMode: "continuous", exposureMode: "continuous",
+    whiteBalanceMode: "continuous" }] }, "auto");
+  log("已恢复全自动");
+  updateLockStat();
+}
+
+function updateLockStat() {
+  if (!vtrack) { $("lockStat").innerHTML = "未启动"; return; }
+  const s = vtrack.getSettings ? vtrack.getSettings() : {};
+  const tag = (v, good) => `<span class="${v === good ? "ok" : "warn"}">${v || "?"}</span>`;
+  $("lockStat").innerHTML = `对焦 ${tag(s.focusMode, "manual")}　`
+    + `曝光 ${tag(s.exposureMode, "manual")}　`
+    + `ISO ${s.iso === 0 ? '<span class="warn">自动</span>' : s.iso}　`
+    + `快门 ${s.exposureTime || "?"}　WB ${tag(s.whiteBalanceMode, "manual")}`;
+}
+
+/* ---------- 直方图 ---------- */
+function loopHist() {
+  if (!vid.videoWidth) { requestAnimationFrame(loopHist); return; }
+  const w = 160, h = Math.round(w * vid.videoHeight / vid.videoWidth) || 120;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const cx = c.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(vid, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h).data;
+  const bins = new Uint32Array(64);
+  let over = 0, under = 0; const n = w * h;
+  for (let i = 0; i < d.length; i += 4) {
+    const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    bins[Math.min(63, y >> 2)]++;
+    if (y >= 254) over++;
+    if (y <= 1) under++;
+  }
+  const mx = Math.max.apply(null, Array.from(bins)) || 1;
+  hctx.clearRect(0, 0, hist.width, hist.height);
+  const bw = hist.width / 64;
+  for (let i = 0; i < 64; i++) {
+    const bh = Math.round(bins[i] / mx * hist.height);
+    hctx.fillStyle = (i >= 63) ? "#f44" : (i === 0 ? "#44f" : "#7a7");
+    hctx.fillRect(i * bw, hist.height - bh, bw - 1, bh);
+  }
+  const po = over / n * 100, pu = under / n * 100;
+  $("expo").innerHTML = `过曝 <b class="${po > 1 ? "bad" : "ok"}">${po.toFixed(2)}%</b>`
+    + `　欠曝 <b class="${pu > 1 ? "bad" : "ok"}">${pu.toFixed(2)}%</b>`
+    + (po > 1 || pu > 1 ? ' <span class="bad">削波</span>' : ' <span class="ok">OK</span>');
+  setTimeout(loopHist, 200);
+}
+
+/* ---------- 捕获 ---------- */
+function toBlob(c, type) { return new Promise(res => c.toBlob(b => res(b), type)); }
+async function capture() {
+  const n = 5, gap = 1000;
+  $("btnCap").disabled = true;
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement("canvas");
+    c.width = vid.videoWidth; c.height = vid.videoHeight;
+    c.getContext("2d").drawImage(vid, 0, 0);
+    const png = await toBlob(c, "image/png");
+    const name = `web_${Date.now()}_${String(i + 1).padStart(2, "0")}.png`;
+    frames.push({ name: name, blob: png });
+    const img = new Image();
+    img.src = URL.createObjectURL(png); img.title = name;
+    $("thumbs").appendChild(img);
+    $("cnt").textContent = `已拍 ${i + 1}/${n}`;
+    log(`捕获 ${i + 1}/${n}：${vid.videoWidth}×${vid.videoHeight}`);
+    if (i < n - 1) await sleep(gap);
+  }
+  $("btnCap").disabled = false;
+  $("btnZip").disabled = false;
+  $("btnClear").disabled = false;
+}
+
+/* ---------- 能力报告 ---------- */
+function infoText() {
+  const set = vtrack && vtrack.getSettings ? vtrack.getSettings() : {};
+  return [
+    "ColorTransfer 网页端捕获信息",
+    "时间: " + new Date().toISOString(),
+    "UA: " + navigator.userAgent,
+    "secureContext: " + window.isSecureContext,
+    "videoSize: " + vid.videoWidth + "x" + vid.videoHeight,
+    "frameCount: " + frames.length,
+    "exposureStat: " + ($("expo").textContent || "").replace(/\s+/g, " "),
+    "lockState: " + ($("lockStat").textContent || "").replace(/\s+/g, " "),
+    "",
+    "capabilities: " + JSON.stringify(caps),
+    "settings: " + JSON.stringify(set),
+    "",
+    "说明: 缺项 = 该参数无法锁定，自动处理不可避免（真实信道）。",
+  ].join("\n");
+}
+
+/* ---------- ZIP(store) ---------- */
+let CRC_T = null;
+function crcTable() {
+  if (CRC_T) return CRC_T;
+  CRC_T = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); CRC_T[n] = c >>> 0; }
+  return CRC_T;
+}
+function crc32(u8) {
+  const t = crcTable(); let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = t[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function buildZip(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  const now = new Date();
+  const dt = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  const dd = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  let off = 0;
+  for (const f of files) {
+    const data = new Uint8Array(await f.blob.arrayBuffer());
+    const nb = enc.encode(f.name), crc = crc32(data);
+    const lh = new Uint8Array(30 + nb.length), lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true);
+    lv.setUint16(8, 0, true); lv.setUint16(10, dt, true); lv.setUint16(12, dd, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
+    lv.setUint16(26, nb.length, true); lv.setUint16(28, 0, true);
+    lh.set(nb, 30); parts.push(lh, data);
+    const ch = new Uint8Array(46 + nb.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true); cv.setUint16(10, 0, true);
+    cv.setUint16(12, dt, true); cv.setUint16(14, dd, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nb.length, true); cv.setUint16(30, 0, true); cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true); cv.setUint16(36, 0, true); cv.setUint32(38, 0, true);
+    cv.setUint32(42, off, true); ch.set(nb, 46); central.push(ch);
+    off += lh.length + data.length;
+  }
+  const cdSize = central.reduce((a, b) => a + b.length, 0);
+  const eo = new Uint8Array(22), ev = new DataView(eo.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true); ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, off, true);
+  return new Blob(parts.concat(central, [eo]), { type: "application/zip" });
+}
+
+/* ---------- 事件 ---------- */
+$("btnStart").onclick = startCamera;
+$("btnFocus").onclick = focusLock;
+$("btnExp").onclick = expLock;
+$("btnAuto").onclick = restoreAuto;
+$("btnCap").onclick = capture;
+$("btnClear").onclick = () => {
+  frames = []; $("thumbs").innerHTML = ""; $("cnt").textContent = "";
+  $("btnZip").disabled = true; $("btnClear").disabled = true;
+};
+$("btnZip").onclick = async () => {
+  if (!frames.length) return;
+  $("btnZip").disabled = true;
+  const all = frames.concat([{ name: "capture_info.txt",
+    blob: new Blob([infoText()], { type: "text/plain" }) }]);
+  const zip = await buildZip(all);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(zip);
+  a.download = `web_capture_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}.zip`;
+  a.click();
+  log(`已打包 ${all.length} 个文件（${(zip.size / 1048576).toFixed(2)}MB）`);
+  $("btnZip").disabled = false;
+};
+</script>
+</body>
+</html>

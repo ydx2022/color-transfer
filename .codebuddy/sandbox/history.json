@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "spaceKey": "f18edbbd06d348bda6bdf7ce079a12fc",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "ColorTransfer 发送/接收端静态站点（Vite 构建产物由 vite preview 托管）",
+      "createdAt": 1788755886478
+    },
+    {
+      "spaceKey": "28e209cbfcfd4543b06625c0170f1f56",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "ColorTransfer 发送/接收端静态站点（Vite 构建产物由 vite preview 托管）",
+      "createdAt": 1788763265805
+    },
+    {
+      "spaceKey": "639c393c543142c6ac5c3fd88ab896b1",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "部署 ColorTransfer 实测版（路由分层：/#/test 发送、/#/test/receive 接收，顶层 /#/ 预留产品占位）",
+      "createdAt": 1788766110309
+    },
+    {
+      "spaceKey": "26e39239780f4d0fa0558acb040359d7",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "上传最新代码（含测试图案导出脚本与渲染修复），供远端执行自检",
+      "createdAt": 1788775020218
+    },
+    {
+      "spaceKey": "7684aebd42864ea4b533ba83249388db",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "构建 + 运行图案导出自检（报告输出到 dist/export_report.txt）",
+      "createdAt": 1788775885137
+    },
+    {
+      "spaceKey": "40a95484d4814c8888824f74f8c6e66b",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "构建 + 运行图案自检（报告自动写入 dist/export_report.txt）",
+      "createdAt": 1788776007163
+    },
+    {
+      "spaceKey": "c4a23021f6704750a00b532ad8ba6a25",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "重新构建并跑修正后的图案自检（报告：dist/export_report.txt）",
+      "createdAt": 1788776246361
+    },
+    {
+      "spaceKey": "9c8f26b124d64cf9bef3ef826b014d60",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "修复 encodeCell 纯形状退化后重新构建并自检",
+      "createdAt": 1788776421254
+    },
+    {
+      "spaceKey": "75e494f3a29a4db8a98a71816f3540c3",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "构建 + 自检 + npm test + tsc --noEmit（真实日志写入 dist/）",
+      "createdAt": 1788779947897
+    },
+    {
+      "spaceKey": "afa8ebf69da54e4abc514771f5470364",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "修复类型错误后重跑：typecheck / npm test / 图案自检（真实日志写入 dist/）",
+      "createdAt": 1788783009606
+    },
+    {
+      "spaceKey": "b99b632b1ee74f8eb06a552f0ebbad54",
+      "projectPath": "d:\\Project\\ColorTransfer\\web",
+      "desc": "最后一处类型修复后复跑 typecheck / test / 图案自检",
+      "createdAt": 1788783309441
+    }
+  ]
+}

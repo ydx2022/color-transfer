@@ -1,0 +1,41 @@
+# ===== Node / 前端依赖与构建产物 =====
+node_modules/
+web/node_modules/
+dist/
+web/dist/
+dev-dist/
+web/dev-dist/
+*.local
+
+# ===== Vite PWA 生成物 =====
+web/public/sw.js
+web/public/workbox-*.js
+
+# ===== Python 标定工具链 =====
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# ===== 系统与编辑器 =====
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# ===== 大体积媒体（标定照片如有超大原图，按需取消注释保留） =====
+# calibration/photos/**/*.cr3
+# calibration/photos/**/*.dng
+
+# ===== 标定数据与调试产物（本地保留，不入库；体积大且可复现） =====
+calibration/photos/
+calibration/out_web/
+calibration/out_web_locked/
+calibration/out_20260904/
+calibration/selftest/
+web_capture_*.zip
+IMG_2026*.jpg

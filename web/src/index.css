@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #0b0f1a;
+  color: #e5e7eb;
+}
+
+body {
+  font-family: "PingFang SC", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 方块绘制时禁用选择，避免连拍/长按误选 */
+canvas {
+  user-select: none;
+  touch-action: none;
+}

@@ -1,0 +1,43 @@
+{
+    "training": {
+        "batch_size": 32,
+        "epochs": 100,
+        "validation_split": 0.2,
+        "learning_rate": 0.001
+    },
+    "hardware": {
+        "sender": {
+            "resolution": [1600, 900],
+            "refresh_rate": 60
+        },
+        "receiver": {
+            "resolution": [1920, 1080],
+            "fps": 15
+        }
+    },
+    "color_mapping": {
+        "base_value": 65,
+        "max_value": 255,
+        "low_segment": 16,
+        "low_step": 8,
+        "high_step": 5,
+        "num_levels": 32
+    },
+    "calibration": {
+        "border_width": 40,
+        "calibration_points": 32
+    },
+    "data_transfer": {
+        "block_size": 8,
+        "parity_bits": 4,
+        "calibration_blocks": 4,
+        "sync_pattern": [255, 0, 0, 255],
+        "block_dim": 20,
+        "grid_width": 80,
+        "grid_height": 45
+    },
+    "recognition": {
+        "threshold": 0.85,
+        "model_path": "models/color_decoder.h5"
+    }
+}
