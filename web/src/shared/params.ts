@@ -2,8 +2,11 @@
 import type { ColorBits, ProfileName, SymbolBits, CalibMode, ModulationScheme } from "./types.ts";
 
 // 档位（v1.2）：三档**均为纯颜色型**（symbolBits = 0，无符号），参数一律用 colCellPx。
-// 定案依据：calibration/out_sweep_v12/sweep_full.csv —— 纯颜色型在三组信道净吞吐全面胜出
-// （native 3.0× / web_locked 2.56× / web_auto 5.67×），且与 d_rec 恰好重合（比值 1.00×）。
+// 定案依据：calibration/out_sweep_v13/sweep_full.csv（13680 组全量细扫，任务 10 P1）。
+// 纯颜色型在三组信道净吞吐全面胜出；且【降色数可拉大色间距、提升抗串扰】，
+// 使最优 colCellPx 落在 d_rec 之下（native 1.00× / web_locked 0.60× / web_auto 0.62×）——
+// 净吞吐 = colorBits ÷ colCellPx² 的平方增益超过位宽损失。
+// 校准格一律与数据格同尺寸（C 组结论：小校准格会被自身模糊毁掉）。
 export interface Profile {
   name: ProfileName;
   colCellPx: number; // 纯颜色型数据格边长，单位【屏幕像素】
@@ -19,27 +22,27 @@ export interface Profile {
 export const PROFILES: Record<ProfileName, Profile> = {
   safe: {
     name: "safe",
-    colCellPx: 13,
+    colCellPx: 8,
     symbolBits: 0,
-    colorBits: 4, // 4 bit (16色)
-    winFrac: 1 / 3,
-    calibMode: "dense",
-    denseN: 4,
+    colorBits: 2, // 2 bit (4色)：降色数拉大色间距，抗串扰
+    winFrac: 1 / 4,
+    calibMode: "four_corner",
+    denseN: 0,
     label: "safe（最差包络）",
     description:
-      "web_auto：σ_PSF = 2.777 屏幕像素，d_rec = 13 屏幕像素。纯颜色型 colCellPx = 13 屏幕像素，4 bit (16色)，密集 N=4，采样窗口 1/3，校准格与数据格同尺寸。净吞吐 0.02216 bit/屏幕像素²"
+      "web_auto：σ_PSF = 2.777 屏幕像素，d_rec = 13 屏幕像素。纯颜色型 colCellPx = 8 屏幕像素（d_rec 的 0.62×），2 bit (4色)，四角校准，采样窗口 1/4，校准格与数据格同尺寸。净吞吐 0.03125 bit/屏幕像素²"
   },
   balanced: {
     name: "balanced",
-    colCellPx: 5,
+    colCellPx: 3,
     symbolBits: 0,
-    colorBits: 4, // 4 bit (16色)
-    winFrac: 1 / 3,
+    colorBits: 2, // 2 bit (4色)：降色数拉大色间距，抗串扰
+    winFrac: 1 / 4,
     calibMode: "four_corner",
     denseN: 0,
     label: "balanced（折中）",
     description:
-      "web_locked：σ_PSF = 1.032 屏幕像素，d_rec = 5 屏幕像素。纯颜色型 colCellPx = 5 屏幕像素，4 bit (16色)，四角校准，采样窗口 1/3。净吞吐 0.16000 bit/屏幕像素²"
+      "web_locked：σ_PSF = 1.032 屏幕像素，d_rec = 5 屏幕像素。纯颜色型 colCellPx = 3 屏幕像素（d_rec 的 0.60×），2 bit (4色)，四角校准，采样窗口 1/4，校准格与数据格同尺寸。净吞吐 0.22222 bit/屏幕像素²"
   },
   fast: {
     name: "fast",

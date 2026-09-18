@@ -8,7 +8,7 @@ import { ChevronLeft, ChevronRight, Maximize, Download } from "lucide-react";
 import { encodeFile, countDataCells, type CellFrame } from "../core/encoder.ts";
 import { paintCellFrame } from "../viz/screenRender.ts";
 import { DEMO_PAYLOAD } from "../shared/testPayload.ts";
-import { TEST_PATTERNS, schemeOfPattern, colorFormat } from "../shared/testPatterns.ts";
+import { TEST_PATTERNS, schemeOfPattern, colorFormat, winFracLabel } from "../shared/testPatterns.ts";
 
 const DEMO = DEMO_PAYLOAD;
 const PATTERNS = TEST_PATTERNS;
@@ -134,7 +134,7 @@ export function SendPage() {
         <span className="text-gray-300">校准 <b className="text-gray-100">
           {pattern.calibMode === "none" ? "无" : pattern.calibMode === "four_corner" ? "四角" : `密集 N=${pattern.denseN}`}
         </b>（校准格与数据格同尺寸）</span>
-        <span className="text-gray-300">采样窗口 <b className="text-gray-100">{pattern.winFrac === 1 / 3 ? "1/3" : pattern.winFrac === 0.5 ? "1/2" : pattern.winFrac.toFixed(2)}</b></span>
+        <span className="text-gray-300">采样窗口 <b className="text-gray-100">{winFracLabel(pattern.winFrac)}</b>（校准格与数据格同尺寸）</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -194,7 +194,7 @@ console.log("== 产品传输链路（编码 → 理想解码 → 重组）==");
   for (let i = 0; i < src.length; i++) src[i] = (i * 37 + 11) & 0xff;
   const plan = planTransfer("safe", 1920, 1080, { fileId: 42 });
   const res = encodeTransfer(src, plan);
-  check("cellPx 满足 safe 档下限 13", plan.cellPx >= 13, `实际 ${plan.cellPx}`);
+  check("cellPx 满足 safe 档下限 8", plan.cellPx >= 8, `实际 ${plan.cellPx}`);
   check("每帧承载整数个 RS 码字", plan.blocksPerFrame >= 1);
 
   const rs = new TransferReassembler(src.length);

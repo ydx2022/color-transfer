@@ -18,8 +18,8 @@ export const CELL_META_DATA = 0;
 // 取值使 1920×1080 下 cellPx **恰好等于**各档 colCellPx → 在【真实密度下铺满全屏】，
 // 兑现仿真预测的净吞吐。（旧值 96×54 实际 cellPx=20，密度只有理论值的约 42%。）
 export const GRIDS: Record<ProfileName, { cols: number; rows: number }> = {
-  safe: { cols: 147, rows: 83 }, // colCellPx = 13 屏幕像素 → 1911×1079
-  balanced: { cols: 384, rows: 216 }, // colCellPx = 5 屏幕像素 → 1920×1080
+  safe: { cols: 240, rows: 135 }, // colCellPx = 8 屏幕像素 → 1920×1080
+  balanced: { cols: 640, rows: 360 }, // colCellPx = 3 屏幕像素 → 1920×1080
   fast: { cols: 640, rows: 360 } // colCellPx = 3 屏幕像素 → 1920×1080
 };
 export const HEADER_ROWS = 2;

@@ -88,7 +88,10 @@ export type SymbolBits = 0 | 1 | 2 | 3 | 4;
 // 调制方案：单元尺寸、形状位宽、颜色位宽、校准模式（含密集网格 N）。铁律：档位参数须有实测/推导依据。
 export interface ModulationScheme {
   id: string;
-  cellPx: number; // 数据格边长，单位：屏幕像素（非摄像头像素）
+  // 遗留字段，语义为 v1.2 的 symCellPx，符号型专用（数据格边长，单位：屏幕像素）。
+  // 技术债：未全局改名为 symCellPx —— 改名会波及 channelSim/frameRender 等符号型遗留模块并打断单测。
+  // 纯颜色型请一律使用 Profile.colCellPx / TestPattern.colCellPx。
+  cellPx: number;
   symbolBits: SymbolBits; // 符号维度位宽（形状携带的 bit 数）
   colorBits: ColorBits; // 颜色维度位宽：0 = 无颜色维度（色数 1），2 = 2 bit (4色)，依此类推
   calibMode: CalibMode;

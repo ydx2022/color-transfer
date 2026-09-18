@@ -1,8 +1,10 @@
-// 8 张实测测试图案（T1–T8）的唯一事实来源：SendPage 渲染与离线导出/回归共用，
-// 避免两处定义各自漂移。
-// **全部为纯颜色型**（symbolBits = 0，无符号）——依据：纯颜色型在三组信道净吞吐全面胜出，
-// 符号型（M1）在 web_auto 下整文件解码成功率 0.0000，已在 v1.2 重扫中推翻。
-// 覆盖维度：colCellPx ∈ {3,5,13}、4 bit (16色) / 3 bit (8色)、四角 / 密集 N=4、采样窗口 1/3 与 1/2。
+// 实测图案（T1–T8）的唯一事实来源：SendPage 渲染、/#/test/receive 现场解码、离线导出共用。
+// **全部为纯颜色型**（symbolBits = 0，无符号），术语 v1.2。
+//
+// 本组为【真机对比序列】：仿真未建模色度子采样 4:2:0（色彩分辨率仅亮度 1/4），
+// 对纯颜色型杀伤最大，故 safe 档的 8 屏幕像素 vs 10 屏幕像素 不由仿真拍板，改由真机判定。
+// 覆盖：colCellPx ∈ {8, 9, 10, 13} 屏幕像素 × {2 bit (4色), 4 bit (16色)}，
+// 校准一律四角，采样窗口一律 1/4。校准格与数据格同尺寸。
 import type { CalibMode, ColorBits, ModulationScheme } from "./types.ts";
 
 export interface TestPattern {
@@ -13,18 +15,18 @@ export interface TestPattern {
   calibMode: CalibMode;
   denseN: number;
   winFrac: number; // 采样窗口比例
-  note: string; // 该图案要验证的边界
+  note: string; // 该图案在对比序列中的角色
 }
 
 export const TEST_PATTERNS: TestPattern[] = [
-  { id: 1, profile: "fast", colCellPx: 3, colorBits: 3, calibMode: "four_corner", denseN: 0, winFrac: 0.5, note: "fast 档基准（3 bit (8色) + 四角 + 窗口 1/2）" },
-  { id: 2, profile: "fast", colCellPx: 3, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 1 / 3, note: "色数上探 4 bit (16色) + 窗口收紧 1/3" },
-  { id: 3, profile: "balanced", colCellPx: 5, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 1 / 3, note: "balanced 档基准（4 bit (16色) + 四角 + 窗口 1/3）" },
-  { id: 4, profile: "balanced", colCellPx: 5, colorBits: 3, calibMode: "dense", denseN: 4, winFrac: 1 / 3, note: "校准模式边界：改用密集 N=4" },
-  { id: 5, profile: "safe", colCellPx: 13, colorBits: 4, calibMode: "dense", denseN: 4, winFrac: 1 / 3, note: "safe 档基准（4 bit (16色) + 密集 N=4 + 窗口 1/3）" },
-  { id: 6, profile: "safe", colCellPx: 13, colorBits: 3, calibMode: "dense", denseN: 4, winFrac: 0.5, note: "色数下探 3 bit (8色) + 窗口放宽 1/2" },
-  { id: 7, profile: "safe", colCellPx: 13, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 1 / 3, note: "校准模式边界：safe 改用四角（预期因非径向梯度失败，用于对照）" },
-  { id: 8, profile: "balanced", colCellPx: 8, colorBits: 4, calibMode: "dense", denseN: 4, winFrac: 1 / 3, note: "中间点 colCellPx=8，用于观察崩溃是断崖还是渐变" }
+  { id: 1, profile: "safe", colCellPx: 8, colorBits: 2, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "仿真最优候选：colCellPx=8 屏幕像素 + 2 bit (4色)" },
+  { id: 2, profile: "safe", colCellPx: 8, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "同为 8 屏幕像素但升到 4 bit (16色)：验证位宽 vs 串扰权衡" },
+  { id: 3, profile: "safe", colCellPx: 9, colorBits: 2, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "9 屏幕像素 + 2 bit (4色)：工程余量档（推荐落点区间）" },
+  { id: 4, profile: "safe", colCellPx: 9, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "9 屏幕像素 + 4 bit (16色)" },
+  { id: 5, profile: "safe", colCellPx: 10, colorBits: 2, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "10 屏幕像素 + 2 bit (4色)：更保守的余量档" },
+  { id: 6, profile: "safe", colCellPx: 10, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "10 屏幕像素 + 4 bit (16色)" },
+  { id: 7, profile: "safe", colCellPx: 13, colorBits: 2, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "d_rec 基准对照：13 屏幕像素 + 2 bit (4色)" },
+  { id: 8, profile: "safe", colCellPx: 13, colorBits: 4, calibMode: "four_corner", denseN: 0, winFrac: 0.25, note: "d_rec 基准对照：13 屏幕像素 + 4 bit (16色)（v12 定案值）" }
 ];
 
 export const SYMBOL_BITS_OFF = 0; // 纯颜色型：无符号维度
@@ -43,11 +45,18 @@ export function schemeOfPattern(p: TestPattern): ModulationScheme {
 
 // 全屏网格：在 1920×1080 参考屏上每格恰好 colCellPx，铺满全屏（解码端据此 warp，必须一致）。
 export function gridForColCellPx(colCellPx: number): { cols: number; rows: number } {
-  const cols = Math.max(1, Math.floor(1920 / colCellPx));
-  const rows = Math.max(1, Math.floor(1080 / colCellPx));
-  return { cols, rows };
+  return { cols: Math.max(1, Math.floor(1920 / colCellPx)), rows: Math.max(1, Math.floor(1080 / colCellPx)) };
 }
 
 export function colorFormat(colorBits: number): string {
   return colorBits === 0 ? "无颜色维度（单色底）" : `${colorBits} bit (${1 << colorBits}色)`;
+}
+
+export function winFracLabel(f: number): string {
+  if (Math.abs(f - 0.25) < 1e-9) return "1/4";
+  if (Math.abs(f - 1 / 3) < 1e-9) return "1/3";
+  if (Math.abs(f - 0.5) < 1e-9) return "1/2";
+  if (Math.abs(f - 2 / 3) < 1e-9) return "2/3";
+  if (Math.abs(f - 1) < 1e-9) return "1.0";
+  return f.toFixed(2);
 }
