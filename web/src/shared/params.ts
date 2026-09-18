@@ -1,18 +1,58 @@
 // 共享参数层（纯 TS、零 DOM）。所有编码档位、调色板、调制方案集中在此，参数均源自实测标定。
 import type { ColorBits, ProfileName, SymbolBits, CalibMode, ModulationScheme } from "./types.ts";
 
+// 档位（v1.2）：三档**均为纯颜色型**（symbolBits = 0，无符号），参数一律用 colCellPx。
+// 定案依据：calibration/out_sweep_v12/sweep_full.csv —— 纯颜色型在三组信道净吞吐全面胜出
+// （native 3.0× / web_locked 2.56× / web_auto 5.67×），且与 d_rec 恰好重合（比值 1.00×）。
 export interface Profile {
   name: ProfileName;
-  cellPx: number;
+  colCellPx: number; // 纯颜色型数据格边长，单位【屏幕像素】
+  symbolBits: 0; // 纯颜色型：无符号维度
+  colorBits: ColorBits; // 颜色位宽，书写为 N bit (M色)
+  winFrac: number; // 采样窗口比例（取平均区域占数据格边长的比例）
+  calibMode: CalibMode;
+  denseN: number; // 校准格间距（密集模式）；非密集为 0
   label: string;
   description: string;
 }
 
-// 档位：safe / balanced / fast（人工选档，发送后全程不变）。cellPx 单位统一为【屏幕像素】。
 export const PROFILES: Record<ProfileName, Profile> = {
-  safe: { name: "safe", cellPx: 13, label: "safe（最差包络）", description: "web_auto 最差包络 d_rec = 13 屏幕像素；σ_PSF 实测 2.78 屏幕像素" },
-  balanced: { name: "balanced", cellPx: 8, label: "balanced（折中）", description: "擂台赛 M3 实测依据（解码成功率 0.9999）；cellPx = 8 屏幕像素。7 从未测过，不引入未验证参数" },
-  fast: { name: "fast", cellPx: 5, label: "fast（锁定模式）", description: "web_locked 锁定模式 d_rec = 5 屏幕像素；σ_PSF 实测 1.03 屏幕像素" }
+  safe: {
+    name: "safe",
+    colCellPx: 13,
+    symbolBits: 0,
+    colorBits: 4, // 4 bit (16色)
+    winFrac: 1 / 3,
+    calibMode: "dense",
+    denseN: 4,
+    label: "safe（最差包络）",
+    description:
+      "web_auto：σ_PSF = 2.777 屏幕像素，d_rec = 13 屏幕像素。纯颜色型 colCellPx = 13 屏幕像素，4 bit (16色)，密集 N=4，采样窗口 1/3，校准格与数据格同尺寸。净吞吐 0.02216 bit/屏幕像素²"
+  },
+  balanced: {
+    name: "balanced",
+    colCellPx: 5,
+    symbolBits: 0,
+    colorBits: 4, // 4 bit (16色)
+    winFrac: 1 / 3,
+    calibMode: "four_corner",
+    denseN: 0,
+    label: "balanced（折中）",
+    description:
+      "web_locked：σ_PSF = 1.032 屏幕像素，d_rec = 5 屏幕像素。纯颜色型 colCellPx = 5 屏幕像素，4 bit (16色)，四角校准，采样窗口 1/3。净吞吐 0.16000 bit/屏幕像素²"
+  },
+  fast: {
+    name: "fast",
+    colCellPx: 3,
+    symbolBits: 0,
+    colorBits: 3, // 3 bit (8色)
+    winFrac: 1 / 2,
+    calibMode: "four_corner",
+    denseN: 0,
+    label: "fast（性能上限信道）",
+    description:
+      "native：σ_PSF = 0.520 屏幕像素，d_rec = 3 屏幕像素。纯颜色型 colCellPx = 3 屏幕像素，3 bit (8色)，四角校准，采样窗口 1/2。净吞吐 0.33333 bit/屏幕像素²"
+  }
 };
 
 export const PROFILE_ORDER: ProfileName[] = ["safe", "balanced", "fast"];

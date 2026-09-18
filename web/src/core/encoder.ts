@@ -90,7 +90,7 @@ export function countDataCells(cellMeta: Uint8Array): number {
 export function encodeFile(
   file: Uint8Array,
   scheme: ModulationScheme,
-  opts: { cols?: number; rows?: number; fileId?: number } = {}
+  opts: { cols?: number; rows?: number; fileId?: number; fill?: "pad" | "cycle" } = {}
 ): EncodeResult {
   const cols = opts.cols ?? 24;
   const rows = opts.rows ?? 14;
@@ -110,15 +110,27 @@ export function encodeFile(
     }
     blocks.push(rsEncode(blk, k, n));
   }
-  const payload = new Uint8Array(blocks.length * n);
-  blocks.forEach((b, i) => payload.set(b, i * n));
+  const rsPayload = new Uint8Array(blocks.length * n);
+  blocks.forEach((b, i) => rsPayload.set(b, i * n));
 
-  // 2) 比特打包成格值
-  const cellValues = packBytesToCellValues(payload, scheme);
-
-  // 3) 帧布局 + 切片
+  // 2) 帧布局（先算数据格容量，用于 cycle 填充）
   const { cellMeta, pilotParity } = computeLayout(cols, rows, denseN);
   const dataCapacity = countDataCells(cellMeta);
+
+  // 3) 比特打包成格值
+  //    fill="cycle"：把 RS 码字循环铺满全部数据格（全屏实测用，避免大网格下大量空白格）
+  //    fill="pad"（默认）：载荷不足则剩余格置 -1（擦除），用于真实文件传输
+  let cellValues: number[];
+  if (opts.fill === "cycle" && rsPayload.length > 0) {
+    const targetBytes = Math.ceil((dataCapacity * bitsPerCellOf(scheme)) / 8);
+    const full = new Uint8Array(targetBytes);
+    for (let i = 0; i < targetBytes; i++) full[i] = rsPayload[i % rsPayload.length];
+    cellValues = packBytesToCellValues(full, scheme);
+  } else {
+    cellValues = packBytesToCellValues(rsPayload, scheme);
+  }
+
+  // 4) 切片成帧
   const frameCount = Math.max(1, Math.ceil(cellValues.length / Math.max(1, dataCapacity)));
   const frames: CellFrame[] = [];
   let idx = 0;

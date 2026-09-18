@@ -262,3 +262,145 @@ export function gauss(rnd: Rng): number {
   while (v === 0) v = rnd();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
+
+// ============================================================================
+// 空间模糊【物理模型】——取代此前的 `blurContrast = 1/(1+r^2)` 近似
+//
+// 定案前提：σ_PSF 单位 = 【屏幕像素】（见 calibration/analyze_calibration.py:12/395/1085 与
+// calibration.json 的 psf.sigma_screen_px）。在此单位下，web_auto 的 σ=2.78 屏幕像素
+// 大于现行 sub=1.625 屏幕像素，旧模型仍给出 25.5% 残余对比度（物理上约 5.5e-7），
+// 故旧模型对符号型过于乐观约 5 个数量级，且纯颜色型完全没有模糊项 —— 均已废弃。
+//
+// 统一模型：局域盒式渲染 → 真实高斯卷积 → 按采样窗取平均。
+// 实现为【解析盒到盒权重】：源矩形经高斯 PSF 后在采样矩形窗内的平均贡献。
+// 这等价于「超采样离散卷积」在超采样倍数→∞ 时的连续极限（无离散化误差），
+// 且为 O(1)，使上千组参数扫描可完成。
+// ============================================================================
+
+// 误差函数（Abramowitz & Stegun 7.1.26，|ε| < 1.5e-7）
+export function erf(z: number): number {
+  const s = z < 0 ? -1 : 1;
+  const x = Math.abs(z);
+  const t = 1 / (1 + 0.3275911 * x);
+  const y =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
+      t *
+      Math.exp(-x * x);
+  return s * y;
+}
+
+function gaussCdf(z: number): number {
+  return 0.5 * (1 + erf(z / Math.SQRT2));
+}
+function gaussPdf(z: number): number {
+  return Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+}
+// ∫Φ(u)du = u·Φ(u) + φ(u)
+function antiderivF(u: number): number {
+  return u * gaussCdf(u) + gaussPdf(u);
+}
+
+/**
+ * 源区间 [a,b] 的均匀发光，经标准差 sigma 的高斯 PSF 后，
+ * 落在采样窗 [c,d] 内的**平均贡献权重**（窗内取平均）。
+ * 推导：∫_c^d [Φ((b-x)/σ) − Φ((a-x)/σ)] dx / (d−c)
+ *     = σ·[F((b-c)/σ) − F((b-d)/σ) − F((a-c)/σ) + F((a-d)/σ)] / (d−c)
+ */
+export function boxToBoxWeight(a: number, b: number, c: number, d: number, sigma: number): number {
+  const w = d - c;
+  if (w <= 0) return 0;
+  if (sigma <= 1e-9) {
+    const lo = Math.max(a, c);
+    const hi = Math.min(b, d);
+    return Math.max(0, hi - lo) / w;
+  }
+  const s = sigma;
+  const I = (lo: number) => s * (antiderivF((lo - c) / s) - antiderivF((lo - d) / s));
+  return (I(b) - I(a)) / w;
+}
+
+/**
+ * 均匀网格（间距 pitch 屏幕像素）上的 1D 模糊核。
+ * K[m] = 「偏移 m 个格位」的源格 → 「中心格内、边长占 winFrac 的居中采样窗」的平均权重。
+ * 返回 { k, R }：k 长度为 2R+1，k[R+m] 即 K[m]。已归一化以补偿截断（Σ K = 1）。
+ */
+export function blurKernel1D(pitch: number, winFrac: number, sigma: number, radiusSigma = 3.5): { k: number[]; R: number } {
+  const p = Math.max(pitch, 1e-9);
+  const R = Math.max(1, Math.ceil((radiusSigma * sigma) / p) + 1);
+  const half = (winFrac * p) / 2;
+  const wc = 0.5 * p; // 中心格中心
+  const c0 = wc - half;
+  const c1 = wc + half;
+  const k: number[] = [];
+  let sum = 0;
+  for (let m = -R; m <= R; m++) {
+    const v = boxToBoxWeight(m * p, (m + 1) * p, c0, c1, sigma);
+    k.push(v);
+    sum += v;
+  }
+  for (let i = 0; i < k.length; i++) k[i] /= sum > 0 ? sum : 1;
+  return { k, R };
+}
+
+// 符号型：把（中心格 + 邻格）的符号子格亮度场做可分离高斯卷积，返回中心格 symRes×symRes 的观测电平。
+// levels 取值：1 = 亮（底色），0 = 暗（符号点）。邻格内容由调用方随机生成。
+export function convSymbolCell(
+  symRes: number,
+  sub: number,
+  sigmaPsf: number,
+  levels: (gx: number, gy: number, cellCx: number, cellCy: number) => number,
+  winFrac = 1,
+  neighborRange = 3
+): Float64Array {
+  const { k, R } = blurKernel1D(sub, winFrac, sigmaPsf);
+  const nCell = Math.max(1, Math.ceil((R + 1) / symRes) + neighborRange);
+  const lo = -nCell * symRes;
+  const hi = nCell * symRes; // 扩展格范围 [lo, hi)
+  const N = hi - lo;
+  const src = new Float64Array(N * N);
+  for (let iy = 0; iy < N; iy++) {
+    const gy = (lo + iy) % symRes < 0 ? ((lo + iy) % symRes) + symRes : (lo + iy) % symRes;
+    const cy = Math.floor((lo + iy) / symRes);
+    for (let ix = 0; ix < N; ix++) {
+      const gx = (lo + ix) % symRes < 0 ? ((lo + ix) % symRes) + symRes : (lo + ix) % symRes;
+      const cx = Math.floor((lo + ix) / symRes);
+      src[iy * N + ix] = levels(gx, gy, cx, cy);
+    }
+  }
+  // 可分离卷积：先 y 后 x
+  // 可分离卷积：先 y 后 x。源全局索引 = 输出全局索引 + m；数组下标 = 全局索引 − lo。
+  const tmp = new Float64Array(N * symRes);
+  for (let ix = 0; ix < N; ix++) {
+    for (let j = 0; j < symRes; j++) {
+      let acc = 0;
+      for (let m = -R; m <= R; m++) {
+        const iy = j + m - lo;
+        if (iy < 0 || iy >= N) continue;
+        acc += k[R + m] * src[iy * N + ix];
+      }
+      tmp[ix * symRes + j] = acc;
+    }
+  }
+  const out = new Float64Array(symRes * symRes);
+  for (let j = 0; j < symRes; j++) {
+    for (let i = 0; i < symRes; i++) {
+      let acc = 0;
+      for (let m = -R; m <= R; m++) {
+        const ix = i + m - lo;
+        if (ix < 0 || ix >= N) continue;
+        acc += k[R + m] * tmp[ix * symRes + j];
+      }
+      out[j * symRes + i] = acc;
+    }
+  }
+  return out;
+}
+
+// 纯颜色型：中心格 + 邻格（3×3 起的邻域）在中心采样窗内的混色权重。
+// 返回 { wSelf, wOther }：wSelf = 中心格自身权重；wOther = 1 − wSelf（邻格总权重）。
+export function colorMixingWeights(colCellPx: number, sigmaPsf: number, winFrac: number): { wSelf: number; wOther: number } {
+  const { k, R } = blurKernel1D(colCellPx, winFrac, sigmaPsf);
+  const wSelf = k[R] * k[R]; // (mx=0, my=0)
+  return { wSelf, wOther: Math.max(0, 1 - wSelf) };
+}

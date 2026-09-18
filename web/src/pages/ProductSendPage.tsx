@@ -136,7 +136,7 @@ export function ProductSendPage() {
                 profile === p ? "bg-brand-600 text-white" : "bg-ink-700 text-gray-300 hover:bg-ink-600"
               }`}
             >
-              {p} · {PROFILES[p].cellPx}px
+              {p} · colCellPx={PROFILES[p].colCellPx}
             </button>
           ))}
         </div>
@@ -205,8 +205,8 @@ export function ProductSendPage() {
 
       {plan && !plan.cellPxOk && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-          <AlertTriangle size={15} /> 当前屏幕只能给出 cellPx={plan.cellPx}，低于 {profile} 档下限{" "}
-          {PROFILES[profile].cellPx} 屏幕像素 —— 解码风险高，建议换更大屏幕或改用 safe 档。
+          <AlertTriangle size={15} /> 当前屏幕只能给出 colCellPx={plan.cellPx}，低于 {profile} 档下限{" "}
+          {PROFILES[profile].colCellPx} 屏幕像素 —— 解码风险高，建议换更大屏幕或改用 safe 档。
         </div>
       )}
 
@@ -224,7 +224,7 @@ export function ProductSendPage() {
       <div className="grid grid-cols-2 gap-2 rounded-xl border border-ink-700 bg-ink-800 px-3 py-2 text-xs text-gray-400 sm:grid-cols-3 lg:grid-cols-6">
         <Metric label="文件" value={file ? `${file.name} · ${(file.size / 1024).toFixed(1)} KB` : "—"} />
         <Metric label="网格" value={metrics?.grid ?? "—"} />
-        <Metric label="实际 cellPx" value={metrics ? `${metrics.cellPx} 屏幕像素` : "—"} highlight={!!plan?.cellPxOk} />
+        <Metric label="实际 colCellPx" value={metrics ? `${metrics.cellPx} 屏幕像素` : "—"} highlight={!!plan?.cellPxOk} />
         <Metric label="每帧源字节" value={metrics ? `${(metrics.perFrame / 1024).toFixed(2)} KB` : "—"} />
         <Metric label="帧数" value={metrics ? `${frameIdx + 1}/${metrics.frameCount}` : "—"} />
         <Metric label="一轮耗时" value={metrics ? `${metrics.seconds.toFixed(1)} s` : "—"} />

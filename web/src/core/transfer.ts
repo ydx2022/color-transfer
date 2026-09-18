@@ -14,11 +14,13 @@ import type { ModulationScheme, ProfileName, CalibMode, ColorBits } from "../sha
 export const CELL_META_HEADER = 4;
 export const CELL_META_DATA = 0;
 
-// 逻辑网格（固定常量，发送端与接收端共享）。取值使 1080p 下 cellPx 明显大于档位下限。
+// 逻辑网格（固定常量，发送端与接收端共享）。
+// 取值使 1920×1080 下 cellPx **恰好等于**各档 colCellPx → 在【真实密度下铺满全屏】，
+// 兑现仿真预测的净吞吐。（旧值 96×54 实际 cellPx=20，密度只有理论值的约 42%。）
 export const GRIDS: Record<ProfileName, { cols: number; rows: number }> = {
-  safe: { cols: 96, rows: 54 },
-  balanced: { cols: 120, rows: 68 },
-  fast: { cols: 160, rows: 90 }
+  safe: { cols: 147, rows: 83 }, // colCellPx = 13 屏幕像素 → 1911×1079
+  balanced: { cols: 384, rows: 216 }, // colCellPx = 5 屏幕像素 → 1920×1080
+  fast: { cols: 640, rows: 360 } // colCellPx = 3 屏幕像素 → 1920×1080
 };
 export const HEADER_ROWS = 2;
 
@@ -53,11 +55,16 @@ export function profileFromCode(c: number): ProfileName {
   return c === 0 ? "safe" : c === 1 ? "balanced" : "fast";
 }
 
-export const DEFAULT_COLOR_BITS: Record<ProfileName, ColorBits> = { safe: 2, balanced: 2, fast: 2 };
+// 纯颜色型：默认值统一取自 PROFILES（唯一事实来源），避免两处漂移。
+export const DEFAULT_COLOR_BITS: Record<ProfileName, ColorBits> = {
+  safe: PROFILES.safe.colorBits,
+  balanced: PROFILES.balanced.colorBits,
+  fast: PROFILES.fast.colorBits
+};
 export const DEFAULT_CALIB: Record<ProfileName, { calibMode: CalibMode; denseN: number }> = {
-  safe: { calibMode: "dense", denseN: 3 },
-  balanced: { calibMode: "dense", denseN: 3 },
-  fast: { calibMode: "dense", denseN: 3 }
+  safe: { calibMode: PROFILES.safe.calibMode, denseN: PROFILES.safe.denseN },
+  balanced: { calibMode: PROFILES.balanced.calibMode, denseN: PROFILES.balanced.denseN },
+  fast: { calibMode: PROFILES.fast.calibMode, denseN: PROFILES.fast.denseN }
 };
 
 // 帧布局：三主锚（左上/右上/左下）+ 右下方向标记 + 顶部帧头行 + 密集校准格，其余为数据格。
@@ -107,7 +114,7 @@ export function planTransfer(
   const scheme: ModulationScheme = {
     id: `P-${profile}`,
     cellPx,
-    symbolBits: 4,
+    symbolBits: 0, // 纯颜色型：无符号维度（v1.2 定案）
     colorBits: opts.colorBits ?? DEFAULT_COLOR_BITS[profile],
     calibMode: opts.calibMode ?? calib.calibMode,
     denseN,
@@ -128,7 +135,7 @@ export function planTransfer(
     cols: g.cols,
     rows: g.rows,
     cellPx,
-    cellPxOk: cellPx >= PROFILES[profile].cellPx,
+    cellPxOk: cellPx >= PROFILES[profile].colCellPx,
     scheme,
     headerRows: HEADER_ROWS,
     headerCellCount,
@@ -140,14 +147,15 @@ export function planTransfer(
 }
 
 // 接收端专用：解码只依赖「网格 + 调制参数」，与 cellPx / 屏幕尺寸无关（cellPx 置 0）。
-// 产品档固定 symbolBits=4 / colorBits=2 / dense N=3，故接收端只需在 3 个档位网格里试探并靠 CRC 锁定。
+// 产品档为纯颜色型（symbolBits=0），颜色位宽与校准模式取自 PROFILES；
+// 接收端只需在 3 个档位网格里试探并靠 CRC 锁定。
 export function decodePlanFor(profile: ProfileName): TransferPlan {
   const g = GRIDS[profile];
   const calib = DEFAULT_CALIB[profile];
   const scheme: ModulationScheme = {
     id: `D-${profile}`,
     cellPx: 0,
-    symbolBits: 4,
+    symbolBits: 0,
     colorBits: DEFAULT_COLOR_BITS[profile],
     calibMode: calib.calibMode,
     denseN: calib.denseN,
