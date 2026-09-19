@@ -29,10 +29,13 @@ jobs:
       - run: npm run build
         # Cloudflare Pages 给根域名子域（xxx.pages.dev），无需 BASE_PATH 子路径
 
-      - name: Publish to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+      # pages-action@v1 已被官方删除（仓库 2026-09-18 下线），CI 必失败。
+      # 迁移到 Workers Static Assets：wrangler.toml 在 web/ 下，本步用 wrangler deploy 直传。
+      # 备选（更省心）：在 Cloudflare 后台用 Workers Builds 连接 GitHub 自动构建部署，无需此 Action。
+      - name: Deploy via Wrangler
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: color-transfer
-          directory: web/dist
+          workingDirectory: web
+          command: deploy

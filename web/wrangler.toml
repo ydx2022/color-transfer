@@ -1,0 +1,8 @@
+name = "color-transfer"
+compatibility_date = "2026-09-19"
+
+# 纯静态 Vite + React SPA，hash 路由（/#/、/#/receive、/#/test），无需 Worker 脚本。
+# Workers Static Assets：仅托管 dist，不作服务端渲染。
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
